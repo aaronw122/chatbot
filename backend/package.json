@@ -1,0 +1,21 @@
+{
+  "name": "backend",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/express": "^5.0.6"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "scripts": {
+    "dev": "bun --watch index.js",
+    "start": "bun index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.74.0",
+    "express": "^5.2.1"
+  }
+}
