@@ -1,11 +1,19 @@
 import 'dotenv/config';
 import express, { type Request, type Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk'
+import type{WSmap} from '../types/types'
+import expressWs, { type Application } from 'express-ws';
+import cors from 'cors';
+import type { WebSocket } from 'ws';
 const app = express()
 
-
-
 app.use(express.json())
+
+expressWs(app)
+
+const wsApp = app as unknown as Application;
+
+app.use(cors({ origin: 'http://localhost:5173' }))
 
 type claudeResponse = {
   id: string,
@@ -21,89 +29,92 @@ type claudeResponse = {
 }
 
 
-let history: Anthropic.MessageParam[] = [
+let history: (Anthropic.MessageParam & { id: string })[] = [
   {
     role: "user",
-    content: "hey claude why did britain lose the revolutionary war?"
+    content: "hey claude why did britain lose the revolutionary war?",
+    id: "1"
   },
   {
     role: "assistant",
-    content:"Britain struggled to sustain a war fought 3,000 miles across the Atlantic, with overstretched supply lines and difficulty reinforcing troops, while facing a population that knew the terrain and was fighting for its own homeland.The entry of France, Spain, and the Netherlands turned a colonial rebellion into a global conflict, stretching British military resources to the breaking point and ultimately making the war unsustainable."
+    content: "Britain struggled to sustain a war fought 3,000 miles across the Atlantic, with overstretched supply lines and difficulty reinforcing troops, while facing a population that knew the terrain and was fighting for its own homeland.The entry of France, Spain, and the Netherlands turned a colonial rebellion into a global conflict, stretching British military resources to the breaking point and ultimately making the war unsustainable.",
+    id: "2"
   }
 ]
 
-/*
-app.post('/hello', async (req: Request, res: Response) => {
+const wsMap: WSmap = new Map<string, Set<WebSocket>>
 
-  console.log('request', req)
+//pass through whole new array each Req
 
-  const body = req.body
+//right now its simpler, so i will pass through a mock string, but likely will want enabled for multiple chats nayways
+const sendNewMessage = (id: string, history: (Anthropic.MessageParam & { id: string })[]) => {
+  //send id of 1 thru the post request
+  const connections = wsMap.get('1')
 
-  console.log('confirm body is just text', body.content)
+  console.log('updating chat, connections:', connections)
 
-  let newHistory: { role: string, content: {type: string, text: string}[]}[] = [];
+  if (connections) {
+    connections.forEach(ws => {
+      console.log('ready state?', ws.readyState)
 
-  history.map(el => {
-    newHistory.push(el)
-  })
-
-  let newObj = {
-    role: `user`,
-    content: [
-      {
-        type: 'text',
-        text: `${body.content}`
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'updateChat',
+          history
+        }))
       }
-    ]
+    });
+  }
+}
+
+wsApp.ws('/chat/ws', (ws: WebSocket, req) => {
+
+  //later will check for id generally and have some checks on if the id even exists in history object
+  if (!wsMap.has('1')) {
+    wsMap.set('1', new Set())
   }
 
-  newHistory.push(newObj)
-  //create new object to add to history, add request body to it
-  //
+  wsMap.get('1')!.add(ws);
 
-  //query claude with existing history + new request, add resposne to object
+  //once we refactor, fetch exact gameId history, then check if exists + send.
 
-  const response = await fetch('https://api.anthropic.com/v1/messages',{
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY as string,
-      'anthropic-version': '2023-06-01'
-    },
-    body:
-      //stringify bc request needs to be JSON
-      JSON.stringify({
-      'model': 'claude-haiku-4-5-20251001' as string,
-      'max_tokens': 1000 as number,
-      'messages': newHistory as []})
+  if (history) {
+    ws.send(JSON.stringify({
+      type: 'updateChat',
+      history
+    }));
+  }
+
+  ws.on('close', () => {
+    const connections = wsMap.get('1')
+    if (connections) {
+      connections.delete(ws)
+      if (connections.size === 0) {
+        wsMap.delete('1')
+      }
+    }
   })
 
-  const claudeRes: claudeResponse = await response.json() as claudeResponse
-
-  console.log('claude response', claudeRes.content[0])
-
-  newHistory.push({ role: claudeRes.role, content: claudeRes.content })
-
-  history = newHistory;
-
-  //append obejct to history
-
-  //return claude response only
-  //
-  res.json({role: claudeRes.role, content: claudeRes.content })
+  ws.on('error', (error) => {
+    console.error('websocket error:', error)
+  })
 
 })
-*/
+
+
+app.get('/chat', async (req: Request, res: Response) => {
+  res.json(history)
+})
 
 app.post('/chat', async (req: Request, res: Response) => {
 
-  console.log('request', req)
-
   const body = req.body
 
-  console.log('confirm body is just text', body.content)
+  console.log('confirm body is just text', body)
 
-  let newHistory: Anthropic.MessageParam[]= [];
+   console.log('confirm content', body.content)
+
+  let newHistory: (Anthropic.MessageParam & { id: string })[]= [];
 
   history.map(el => {
     newHistory.push(el)
@@ -111,16 +122,21 @@ app.post('/chat', async (req: Request, res: Response) => {
 
   let newObj = {
     role: `user` as 'user',
-    content: `${body.content}`
+    content: `${body.content}`,
+    id: crypto.randomUUID()
   }
 
   newHistory.push(newObj)
+
+  history = newHistory
+
+  sendNewMessage('1', history)
 
   const client = new Anthropic()
 
   const params: Anthropic.MessageCreateParams = {
     max_tokens: 1000,
-    messages: newHistory,
+    messages: newHistory.map(({ id, ...rest }) => rest),
     model: 'claude-haiku-4-5-20251001'
   }
 
@@ -130,14 +146,24 @@ app.post('/chat', async (req: Request, res: Response) => {
 
   newHistory.push({
     role: message.role,
-    content: message.content
+    content: message.content,
+    id: crypto.randomUUID()
   })
 
   history = newHistory
 
+  sendNewMessage('1', history)
+
   res.json(message.content)
 
   console.log('new history array', history)
+})
+
+app.post('/reset', async (req: Request, res: Response) => {
+  const newHistory: (Anthropic.MessageParam & { id: string })[]= []
+  history = newHistory
+  sendNewMessage('1', history)
+  res.json(history)
 })
 
 const PORT = 3000
