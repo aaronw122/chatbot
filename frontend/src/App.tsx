@@ -1,16 +1,74 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import services from "./services/index";
 import Chats from "./components/chats";
 import Input from "./components/input";
 import "./App.css";
+import NewChat from "./components/newChat";
 
 function App() {
   const [history, setHistory] = useState([]);
   const [newMessage, setNewMessage] = useState("");
+  const [socketConnect, setSocketConnect] = useState<true | false>(false);
+  const webSocket = useRef<WebSocket | null>(null);
+
+  const wsConnect = useCallback(function connect() {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${protocol}//localhost:3000/chat/ws`);
+
+    webSocket.current = ws;
+
+    ws.onopen = () => {
+      console.log("socket connected!");
+      setSocketConnect(true);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "updateChat") {
+          console.log("data.history", data.history);
+          setHistory(data.history);
+        }
+      } catch (error) {
+        console.error("failed to parse message", error);
+      }
+    };
+
+    ws.onclose = (event) => {
+      setSocketConnect(false);
+      console.log("websocket disconnected!");
+
+      if (event.code === 1008) {
+        console.log("chat not found");
+      } else if (webSocket.current !== null) {
+        setTimeout(connect, 4000);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.log("websocket error:", error);
+      setSocketConnect(false);
+    };
+    //no deps for now, but when we refactor arrayy there will be - id, maybe whatever we use to switch views
+  }, []);
 
   useEffect(() => {
     services.getAllMessages().then((r) => setHistory(r));
   }, []);
+
+  //will have new deps in future,
+
+  useEffect(() => {
+    wsConnect();
+
+    //unmounting logic. not needed for now, but ikelhy in future.
+    return () => {
+      if (webSocket.current) {
+        webSocket.current.close();
+        webSocket.current = null;
+      }
+    };
+  }, [wsConnect]);
 
   const handleMsgChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     setNewMessage(event.target.value);
@@ -28,12 +86,14 @@ function App() {
     await services.resetMessages();
   };
 
-  //websocket wikll automatically send back new message....
+  //websocket wikll automatically send back new message, update all messages
 
   return (
     <>
       <h1> Chatbot </h1>
       <div>
+        <NewChat newChat={newChat} />
+        {socketConnect ? <p> connected </p> : <p> disconnected </p>}
         <Chats history={history} />
         <Input
           sendMessage={sendMessage}

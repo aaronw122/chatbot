@@ -1,12 +1,19 @@
 import 'dotenv/config';
 import express, { type Request, type Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk'
+import type{WSmap} from '../types/types'
+import expressWs, { type Application } from 'express-ws';
 import cors from 'cors';
+import type { WebSocket } from 'ws';
 const app = express()
 
 app.use(express.json())
 
-app.use(cors({origin: 'http://localhost:5173'}))
+expressWs(app)
+
+const wsApp = app as unknown as Application;
+
+app.use(cors({ origin: 'http://localhost:5173' }))
 
 type claudeResponse = {
   id: string,
@@ -35,6 +42,66 @@ let history: (Anthropic.MessageParam & { id: string })[] = [
   }
 ]
 
+const wsMap: WSmap = new Map<string, Set<WebSocket>>
+
+//pass through whole new array each Req
+
+//right now its simpler, so i will pass through a mock string, but likely will want enabled for multiple chats nayways
+const sendNewMessage = (id: string, history: (Anthropic.MessageParam & { id: string })[]) => {
+  //send id of 1 thru the post request
+  const connections = wsMap.get('1')
+
+  console.log('updating chat, connections:', connections)
+
+  if (connections) {
+    connections.forEach(ws => {
+      console.log('ready state?', ws.readyState)
+
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'updateChat',
+          history
+        }))
+      }
+    });
+  }
+}
+
+wsApp.ws('/chat/ws', (ws: WebSocket, req) => {
+
+  //later will check for id generally and have some checks on if the id even exists in history object
+  if (!wsMap.has('1')) {
+    wsMap.set('1', new Set())
+  }
+
+  wsMap.get('1')!.add(ws);
+
+  //once we refactor, fetch exact gameId history, then check if exists + send.
+
+  if (history) {
+    ws.send(JSON.stringify({
+      type: 'updateChat',
+      history
+    }));
+  }
+
+  ws.on('close', () => {
+    const connections = wsMap.get('1')
+    if (connections) {
+      connections.delete(ws)
+      if (connections.size === 0) {
+        wsMap.delete('1')
+      }
+    }
+  })
+
+  ws.on('error', (error) => {
+    console.error('websocket error:', error)
+  })
+
+})
+
+
 app.get('/chat', async (req: Request, res: Response) => {
   res.json(history)
 })
@@ -61,6 +128,10 @@ app.post('/chat', async (req: Request, res: Response) => {
 
   newHistory.push(newObj)
 
+  history = newHistory
+
+  sendNewMessage('1', history)
+
   const client = new Anthropic()
 
   const params: Anthropic.MessageCreateParams = {
@@ -81,6 +152,8 @@ app.post('/chat', async (req: Request, res: Response) => {
 
   history = newHistory
 
+  sendNewMessage('1', history)
+
   res.json(message.content)
 
   console.log('new history array', history)
@@ -89,6 +162,7 @@ app.post('/chat', async (req: Request, res: Response) => {
 app.post('/reset', async (req: Request, res: Response) => {
   const newHistory: (Anthropic.MessageParam & { id: string })[]= []
   history = newHistory
+  sendNewMessage('1', history)
   res.json(history)
 })
 
