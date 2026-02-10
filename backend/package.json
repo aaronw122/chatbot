@@ -5,7 +5,8 @@
   "private": true,
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/express": "^5.0.6"
+    "@types/express": "^5.0.6",
+    "@types/ws": "^8.18.1"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -16,6 +17,11 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
-    "express": "^5.2.1"
+    "@types/cors": "^2.8.19",
+    "@types/express-ws": "^3.0.6",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "express-ws": "^5.0.2",
+    "ws": "^8.19.0"
   }
 }
