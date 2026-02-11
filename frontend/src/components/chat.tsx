@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { Card } from "../components/ui/card";
 
 type Message = Anthropic.MessageParam;
 
@@ -20,9 +21,9 @@ const Chat = ({ message }: ChatProps) => {
   }
 
   return message.role === "user" ? (
-    <p>{content} :user</p>
+    <Card className="ml-auto">{content}</Card>
   ) : (
-    <p> assistant: {content} </p>
+    <p className="my-3 mr-15"> {content} </p>
   );
 };
 

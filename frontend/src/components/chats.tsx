@@ -7,7 +7,7 @@ type chatsTypes = {
 
 const Chats = ({ history }: chatsTypes) => {
   return (
-    <div>
+    <div className="flex flex-col">
       {history.map((el) => (
         <Chat key={el.id} message={el} />
       ))}
