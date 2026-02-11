@@ -28,7 +28,11 @@ type claudeResponse = {
   },
 }
 
+//complete DB in mongo
 
+
+
+//user history
 let history: (Anthropic.MessageParam & { id: string })[] = [
   {
     role: "user",
@@ -76,7 +80,7 @@ wsApp.ws('/chat/ws', (ws: WebSocket, req) => {
 
   wsMap.get('1')!.add(ws);
 
-  //once we refactor, fetch exact gameId history, then check if exists + send.
+  //once we refactor, fetch exact sessionId history, then check if exists + send.
 
   if (history) {
     ws.send(JSON.stringify({
