@@ -1,14 +1,15 @@
-import type { Message, Messages, Conversation, CreateConversation} from '../types/types'
+import { STRING_LITERAL_DROP_BUNDLE } from 'next/dist/shared/lib/constants'
+import type { Message, Messages, Conversation, CreateConversation, MessageType} from '../types/types'
 
 
 
 interface Storage {
 
-  addMessage({convoId}:{convoId: string}): Message
+  addMessage({ convoId }: { convoId: string }): Message
 
-  createConversation({ message, userId }: CreateConversation): Conversation
+  createConversation({ content, userId }: CreateConversation): Conversation | Error
 
-  getConversation({convoId}: {convoId: string}): Conversation
+  getConversation({ convoId }: { convoId: string }): Message[] | []
 
   getConversations({ userId }: { userId: string }): Conversation[]
 
@@ -19,26 +20,117 @@ interface Storage {
 }
 
 class InMemoryStorage implements Storage {
-  private conversations: Map<string, Conversation>
-  private messages: Map<string, Message>
+  //creates a map with ey being uerId, value being a list of conversations
+  private conversations: Map<string, Conversation> = new Map()
+  private messages: Map<string, Message> = new Map()
 
   //conversation can only be created if one message has been sent
   // upon sending message, we create conversation AND add it to message class with that convo id
 
-  createConversation({ message, userId }: CreateConversation) {
+  //create conversation will alwyas be initiated by the user, hence content will always be of type string
+  createConversation({ content, userId, save }: CreateConversation) {
+
+    let trimTitle = content.split(' ').slice(0, 7).join(' ')
+
     const convo: Conversation = {
       id: crypto.randomUUID(),
       userId,
-      title:
+      title: trimTitle,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      save: save ? save : true
     }
 
     //check message isn't null
+    if (!content) {
+      throw new Error('no message in the conversation to create it')
+    }
 
-    conversations.set(userId, conversation)
+    //else create conversation
+    this.conversations.set(convo.id, convo )
+
+    return convo
   }
 
   //anytime you add a message it needs to be in context of the conversation, use convoId to properly append
-  addMessage() {
-     this.messages.set(message.convoId, message)
-   }
+  addMessage({ convoId, role, content }: MessageType) {
+
+    const msg: Message = {
+      id: crypto.randomUUID(),
+      convoId: crypto.randomUUID(),
+      role: role,
+      content: content,
+      createdAt: new Date().toISOString()
+    }
+
+    //for now content is just a string, we will not permit others
+    if (content === null || content === undefined) {
+      throw new Error
+    }
+
+    this.messages.set(msg.id, msg)
+    return msg
+
+  }
+
+  //a bit extra, but will be good when we scale to auth
+  getConversations({ userId }: { userId: string }) {
+
+    const convoArr = [...this.conversations.values()]
+
+    const userConvos = convoArr.filter(el => el.userId === userId)
+
+    if (userConvos.length === 0) {
+      return []
+    }
+    //for now content is just a string, we will not permit others
+    console.log('user Convos', userConvos)
+    return userConvos
+  }
+
+  getConversation({ convoId }: { convoId: string }) {
+
+    const messageArr = [...this.messages.values()]
+
+    const convoMessages = messageArr.filter(el => el.convoId === convoId)
+
+    if (convoMessages.length === 0) {
+      return []
+    }
+    //for now content is just a string, we will not permit others
+    console.log('user Convos', convoMessages)
+    return convoMessages
+  }
+
+  //for when a bubble is expanded to a full convo
+  saveConversation({ convoId }: { convoId: string }) {
+    const bubbleConvo = this.conversations.get(convoId) as Conversation
+
+    const fullConvo = {
+      id: bubbleConvo.id,
+      userId: bubbleConvo.userId,
+      title: bubbleConvo.title,
+      createdAt: bubbleConvo.createdAt,
+      updatedAt: bubbleConvo.updatedAt,
+      save: true
+    }
+
+    this.conversations.set(convoId, fullConvo)
+
+    return fullConvo
+  }
+
+  deleteConversation({ convoId }: { convoId: string }) {
+    //need to both delete the convo and the messages with its id
+    const messageArr = [...this.messages.values()]
+
+    const messagesToDelete = messageArr.filter(el => el.convoId === convoId)
+
+    messagesToDelete.map(el => {
+      this.messages.delete(el.id)
+    })
+
+    this.conversations.delete(convoId)
+  }
+
 }
