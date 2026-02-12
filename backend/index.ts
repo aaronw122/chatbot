@@ -72,6 +72,18 @@ const sendNewMessage = (id: string, history: (Anthropic.MessageParam & { id: str
   }
 }
 
+const getAIResponse = async (convoId: string) => {
+  const updatedMessages = storage.getConversation({ convoId })
+    const client = new Anthropic()
+    const params: Anthropic.MessageCreateParams = {
+      max_tokens: 1000,
+      messages: updatedMessages.map(({ id, convoId, createdAt, ...rest }) => rest),
+      model: 'claude-haiku-4-5-20251001'
+    }
+    const message = await client.messages.create(params)
+    return storage.addMessage({ convoId, role: message.role, content: message.content })
+}
+
 wsApp.ws('/chat/ws', (ws: WebSocket, req) => {
 
   //later will check for id generally and have some checks on if the id even exists in history object
@@ -115,6 +127,9 @@ app.get('/conversations', async (req: Request, res: Response) => {
 app.post('/conversations', async (req: Request, res: Response) => {
   const {content, userId, save} = req.body
   const newConvo = storage.createConversation({ content: content, userId: userId, save: save })
+  storage.addMessage({ convoId: newConvo.id, content: content, role: "user" })
+  const aiMsg = await getAIResponse(newConvo.id)
+  sendNewMessage('1', aiMsg)
   res.json(newConvo)
 })
 
@@ -138,26 +153,11 @@ app.post('/messages/:id', async (req: Request, res: Response) => {
   //refactor client handling so they just append new message into history state
   sendNewMessage('1', post)
 
-  //need this to send claude the full message history
-  const updatedMessages = storage.getConversation({ convoId: id })
+  const aiMsg = await getAIResponse(id)
 
-  const client = new Anthropic()
+  sendNewMessage('1', aiMsg)
 
-  const params: Anthropic.MessageCreateParams = {
-    max_tokens: 1000,
-    messages: updatedMessages.map(({ id, convoId, createdAt, ...rest }) => rest),
-    model: 'claude-haiku-4-5-20251001'
-  }
-
-  const message: Anthropic.Message = await client.messages.create(params);
-
-  console.log('message received', message.content)
-
-  const agentMsg = storage.addMessage({ convoId: body.convoId, role: message.role, content: message.content })
-
-  sendNewMessage('1', agentMsg)
-
-  res.json(message.content)
+  res.json(aiMsg.content)
 })
 
 app.post('/reset', async (req: Request, res: Response) => {
