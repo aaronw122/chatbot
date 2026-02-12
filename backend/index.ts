@@ -5,6 +5,8 @@ import type{WSmap} from '../types/types'
 import expressWs, { type Application } from 'express-ws';
 import cors from 'cors';
 import type { WebSocket } from 'ws';
+import { InMemoryStorage } from './storage';
+import { mcpContent } from '@anthropic-ai/sdk/helpers/beta/mcp.js';
 const app = express()
 
 app.use(express.json())
@@ -12,6 +14,8 @@ app.use(express.json())
 expressWs(app)
 
 const wsApp = app as unknown as Application;
+
+const storage = new InMemoryStorage();
 
 app.use(cors({ origin: 'http://localhost:5173' }))
 
@@ -27,9 +31,6 @@ type claudeResponse = {
     output_tokens: number
   },
 }
-
-//complete DB in mongo
-
 
 
 //user history
@@ -105,42 +106,46 @@ wsApp.ws('/chat/ws', (ws: WebSocket, req) => {
 
 })
 
-
-app.get('/chat', async (req: Request, res: Response) => {
-  res.json(history)
+app.get('/conversations', async (req: Request, res: Response) => {
+  const convos = storage.getConversations({ userId: "1" })
+  console.log('convos list', convos)
+  res.json(convos)
 })
 
-app.post('/chat', async (req: Request, res: Response) => {
+app.post('/conversations', async (req: Request, res: Response) => {
+  const {content, userId, save} = req.body
+  const newConvo = storage.createConversation({ content: content, userId: userId, save: save })
+  res.json(newConvo)
+})
+
+
+app.get('/messages/:id', async (req: Request, res: Response) => {
+  const id = req.params.id as string
+  // need to fix axios after as well to send through convoId
+  const messages = storage.getConversation({ convoId: id })
+  console.log('messages express', messages)
+  res.json(messages)
+})
+
+app.post('/messages/:id', async (req: Request, res: Response) => {
+
+  const id = req.params.id as string
 
   const body = req.body
 
-  console.log('confirm body is just text', body)
+  const post = storage.addMessage({ convoId: id, role: body.role, content: body.content })
 
-   console.log('confirm content', body.content)
+  //refactor client handling so they just append new message into history state
+  sendNewMessage('1', post)
 
-  let newHistory: (Anthropic.MessageParam & { id: string })[]= [];
-
-  history.map(el => {
-    newHistory.push(el)
-  })
-
-  let newObj = {
-    role: `user` as 'user',
-    content: `${body.content}`,
-    id: crypto.randomUUID()
-  }
-
-  newHistory.push(newObj)
-
-  history = newHistory
-
-  sendNewMessage('1', history)
+  //need this to send claude the full message history
+  const updatedMessages = storage.getConversation({ convoId: id })
 
   const client = new Anthropic()
 
   const params: Anthropic.MessageCreateParams = {
     max_tokens: 1000,
-    messages: newHistory.map(({ id, ...rest }) => rest),
+    messages: updatedMessages.map(({ id, convoId, createdAt, ...rest }) => rest),
     model: 'claude-haiku-4-5-20251001'
   }
 
@@ -148,19 +153,11 @@ app.post('/chat', async (req: Request, res: Response) => {
 
   console.log('message received', message.content)
 
-  newHistory.push({
-    role: message.role,
-    content: message.content,
-    id: crypto.randomUUID()
-  })
+  const agentMsg = storage.addMessage({ convoId: body.convoId, role: message.role, content: message.content })
 
-  history = newHistory
-
-  sendNewMessage('1', history)
+  sendNewMessage('1', agentMsg)
 
   res.json(message.content)
-
-  console.log('new history array', history)
 })
 
 app.post('/reset', async (req: Request, res: Response) => {
