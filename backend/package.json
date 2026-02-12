@@ -6,6 +6,7 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/express": "^5.0.6",
+    "@types/supertest": "^6.0.3",
     "@types/ws": "^8.18.1"
   },
   "peerDependencies": {
@@ -13,7 +14,8 @@
   },
   "scripts": {
     "dev": "bun --watch index.js",
-    "start": "bun index.js"
+    "start": "bun index.js",
+    "test": "bun test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
@@ -22,6 +24,7 @@
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "express-ws": "^5.0.2",
+    "supertest": "^7.2.2",
     "ws": "^8.19.0"
   }
 }

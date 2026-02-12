@@ -1,14 +1,14 @@
 import WebSocket from 'ws';
+import Anthropic from '@anthropic-ai/sdk'
 
 export type WSmap = Map<string, Set<WebSocket>>
 
 
-export type Message = {
-  id: string;
-  convoId: string;
-  role: "user" | "assistant";
-  content: string;
-  createdAt: string;
+export type Message =
+  Anthropic.MessageParam &
+  { id: string, convoId: string, createdAt: string}
+
+
 }
 //will have to write a mapping layer for anthropic so i can properly just pull the content(text out and add here)
 
@@ -26,6 +26,13 @@ export interface Conversation {
 }
 
 export interface CreateConversation {
-  message: Message;
-  userId: string
+  content: string;
+  userId: string;
+  save?: true | false;
+}
+
+export interface MessageType {
+  convoId: string;
+  role: "user" | "assistant";
+  content: string,
 }
