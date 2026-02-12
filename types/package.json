@@ -9,6 +9,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.74.0",
     "ws": "^8.19.0"
   }
 }

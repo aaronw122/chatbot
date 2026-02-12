@@ -1,12 +1,13 @@
 import 'dotenv/config';
 import express, { type Request, type Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk'
-import type{WSmap} from '../types/types'
+import type{WSmap, Message} from '../types/types'
 import expressWs, { type Application } from 'express-ws';
 import cors from 'cors';
 import type { WebSocket } from 'ws';
-import { InMemoryStorage } from './storage';
+import { InMemoryStorage, type Storage } from './storage';
 import { mcpContent } from '@anthropic-ai/sdk/helpers/beta/mcp.js';
+import { idText } from 'typescript';
 const app = express()
 
 app.use(express.json())
@@ -15,7 +16,7 @@ expressWs(app)
 
 const wsApp = app as unknown as Application;
 
-const storage = new InMemoryStorage();
+const storage: Storage = new InMemoryStorage();
 
 app.use(cors({ origin: 'http://localhost:5173' }))
 
@@ -52,7 +53,7 @@ const wsMap: WSmap = new Map<string, Set<WebSocket>>
 //pass through whole new array each Req
 
 //right now its simpler, so i will pass through a mock string, but likely will want enabled for multiple chats nayways
-const sendNewMessage = (id: string, history: (Anthropic.MessageParam & { id: string })[]) => {
+const sendNewMessage = (id: string, message: (Anthropic.MessageParam & { id: string })) => {
   //send id of 1 thru the post request
   const connections = wsMap.get('1')
 
@@ -65,7 +66,7 @@ const sendNewMessage = (id: string, history: (Anthropic.MessageParam & { id: str
       if (ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify({
           type: 'updateChat',
-          history
+          message
         }))
       }
     });
@@ -84,21 +85,39 @@ const getAIResponse = async (convoId: string) => {
     return storage.addMessage({ convoId, role: message.role, content: message.content })
 }
 
-wsApp.ws('/chat/ws', (ws: WebSocket, req) => {
+const getResponseParse = async (message: Message) => {
+  if (typeof message.content === 'string' || typeof !message.content[0]) return null
+  if (message.content[0]!.type === 'text') {
+    const parsedMsg = {
+      id: message.id,
+      convoId: message.convoId,
+      role: "assistant",
+      content: message.content[0].text,
+      createdAt: message.createdAt
+    }
+    return parsedMsg
+  }
+  return null
+}
 
+wsApp.ws('/messages/:id/ws', (ws: WebSocket, req) => {
+  const id = req.params.id as string;
   //later will check for id generally and have some checks on if the id even exists in history object
-  if (!wsMap.has('1')) {
-    wsMap.set('1', new Set())
+
+  if (!wsMap.has(id)) {
+    wsMap.set(id, new Set())
   }
 
-  wsMap.get('1')!.add(ws);
+  wsMap.get(id)!.add(ws);
 
   //once we refactor, fetch exact sessionId history, then check if exists + send.
 
-  if (history) {
+  const currentMessages = storage.getConversation({convoId: id})
+
+  if (currentMessages) {
     ws.send(JSON.stringify({
       type: 'updateChat',
-      history
+      currentMessages
     }));
   }
 
@@ -125,14 +144,19 @@ app.get('/conversations', async (req: Request, res: Response) => {
 })
 
 app.post('/conversations', async (req: Request, res: Response) => {
-  const {content, userId, save} = req.body
-  const newConvo = storage.createConversation({ content: content, userId: userId, save: save })
+  const { content, save } = req.body
+  //for now hardcoding userId
+  const newConvo = storage.createConversation({ content: content, userId: '1', save: save })
   storage.addMessage({ convoId: newConvo.id, content: content, role: "user" })
   const aiMsg = await getAIResponse(newConvo.id)
-  sendNewMessage('1', aiMsg)
-  res.json(newConvo)
-})
+  const aiMsgParsed = await getResponseParse(aiMsg);
 
+  console.log('parsed anthropic', aiMsgParsed)
+
+  const convoWithRes = storage.getConversation({convoId: newConvo.id})
+  sendNewMessage('1', aiMsg)
+  res.json(convoWithRes)
+})
 
 app.get('/messages/:id', async (req: Request, res: Response) => {
   const id = req.params.id as string
@@ -155,16 +179,12 @@ app.post('/messages/:id', async (req: Request, res: Response) => {
 
   const aiMsg = await getAIResponse(id)
 
+  const aiMsgParsed = getResponseParse(aiMsg);
+
+  console.log('parsed anthropic', aiMsgParsed)
   sendNewMessage('1', aiMsg)
 
   res.json(aiMsg.content)
-})
-
-app.post('/reset', async (req: Request, res: Response) => {
-  const newHistory: (Anthropic.MessageParam & { id: string })[]= []
-  history = newHistory
-  sendNewMessage('1', history)
-  res.json(history)
 })
 
 const PORT = 3000
