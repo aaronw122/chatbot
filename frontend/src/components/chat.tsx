@@ -12,6 +12,7 @@ const Chat = ({ message }: ChatProps) => {
 
   //fix stylingn so its right aligned vs left aligned, etc.
 
+  //should be doing this modification on the backend in express, only send through content string
   if (typeof message.content === "string") {
     content = message.content;
   } else {

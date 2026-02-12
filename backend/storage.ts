@@ -2,8 +2,8 @@ import type { Message, Messages, Conversation, CreateConversation, MessageType} 
 
 
 
-interface Storage {
-  addMessage({ convoId }: { convoId: string }): Message
+export interface Storage {
+  addMessage({ convoId, role, content }: MessageType): Message
 
   createConversation({ content, userId }: CreateConversation): Conversation
 
@@ -17,7 +17,7 @@ interface Storage {
 }
 
 export class InMemoryStorage implements Storage {
-  //creates a map with ey being uerId, value being a list of conversations
+  //creates a map with key being convoId, value being a list of conversations
   private conversations: Map<string, Conversation> = new Map()
   private messages: Map<string, Message> = new Map()
 
@@ -73,8 +73,6 @@ export class InMemoryStorage implements Storage {
   getConversations({ userId }: { userId: string }) {
 
     const convoArr = [...this.conversations.values()]
-
-
 
     const userConvos = convoArr.filter(el => el.userId === userId)
 

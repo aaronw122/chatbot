@@ -4,7 +4,7 @@ import Input from "../components/input";
 import NewChat from "../components/newChat";
 import services from "../services/index";
 
-const Session = () => {
+const Session = ({ id }: { id: string }) => {
   const [socketConnect, setSocketConnect] = useState<true | false>(false);
   const webSocket = useRef<WebSocket | null>(null);
   const [history, setHistory] = useState([]);
@@ -65,8 +65,8 @@ const Session = () => {
   }, [wsConnect]);
 
   useEffect(() => {
-    services.getAllMessages().then((r) => setHistory(r));
-  }, []);
+    services.getMessages(id).then((r) => setHistory(r));
+  }, [id]);
 
   //will have new deps in future,
 
@@ -78,7 +78,11 @@ const Session = () => {
   const sendMessage = async () => {
     console.log("message sent", newMessage);
     setNewMessage("");
-    await services.sendMessage({ content: newMessage });
+    await services.sendMessage({
+      content: newMessage,
+      role: "user",
+      convoId: id,
+    });
   };
 
   const newChat = async () => {
