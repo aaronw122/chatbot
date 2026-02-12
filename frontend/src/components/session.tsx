@@ -3,16 +3,17 @@ import Chats from "../components/chats";
 import Input from "../components/input";
 import NewChat from "../components/newChat";
 import services from "../services/index";
+import type { WebSocketMessage, CleanMessage } from "../../../types/types";
 
 const Session = ({ id }: { id: string }) => {
   const [socketConnect, setSocketConnect] = useState<true | false>(false);
   const webSocket = useRef<WebSocket | null>(null);
-  const [history, setHistory] = useState([]);
+  const [history, setHistory] = useState<CleanMessage[] | []>([]);
   const [newMessage, setNewMessage] = useState("");
 
   const wsConnect = useCallback(function connect() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//localhost:3000/chat/ws`);
+    const ws = new WebSocket(`${protocol}//localhost:3000/messages/${id}/ws`);
 
     webSocket.current = ws;
 
@@ -23,10 +24,13 @@ const Session = ({ id }: { id: string }) => {
 
     ws.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data);
+        const data: WebSocketMessage = JSON.parse(event.data);
+        console.log("event data", event.data);
         if (data.type === "updateChat") {
-          console.log("data.history", data.history);
-          setHistory(data.history);
+          console.log("data.history", data.message);
+          setHistory((prev) => [...prev, data.message]);
+        } else if (data.type === "fullHistory") {
+          setHistory(data.currentMessages);
         }
       } catch (error) {
         console.error("failed to parse message", error);
@@ -36,10 +40,9 @@ const Session = ({ id }: { id: string }) => {
     ws.onclose = (event) => {
       setSocketConnect(false);
       console.log("websocket disconnected!");
-
       if (event.code === 1008) {
         console.log("chat not found");
-      } else if (webSocket.current !== null) {
+      } else if (webSocket.current === ws) {
         setTimeout(connect, 4000);
       }
     };
@@ -54,7 +57,6 @@ const Session = ({ id }: { id: string }) => {
   useEffect(() => {
     wsConnect();
 
-    //unmounting logic. not needed for now, but ikelhy in future.
     return () => {
       const ws = webSocket.current;
       webSocket.current = null;
@@ -64,9 +66,11 @@ const Session = ({ id }: { id: string }) => {
     };
   }, [wsConnect]);
 
+  /*
   useEffect(() => {
     services.getMessages(id).then((r) => setHistory(r));
   }, [id]);
+  */
 
   //will have new deps in future,
 

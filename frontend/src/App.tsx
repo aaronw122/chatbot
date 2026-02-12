@@ -14,22 +14,22 @@ function App() {
   };
 
   return (
-    <div className="flex flex-row">
-      <div className="lg:mx-80 md:mx-20 sm: mx-15 my-5">
+    <div className="flex flex-row mx-10 my-5">
+      <ConvoList selectConvo={selectConvo}></ConvoList>
+      <div className="flex-1">
         {currentView === "newChat" ? (
-          <div>
+          <div className="lg:mx-80 md:mx-20 sm:mx-15 my-5">
             <h1 className="flex items-center justify-center min-h-screen">
-              {" "}
-              threader{" "}
+              {"  "}
+              bubble{" "}
             </h1>
           </div>
         ) : (
-          <div>
+          <div className="mx-10">
             <Session id={convoId} />
           </div>
         )}
       </div>
-      <ConvoList selectConvo={selectConvo}></ConvoList>
     </div>
   );
 }

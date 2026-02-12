@@ -21,6 +21,7 @@ const ConvoList = ({ selectConvo }: { selectConvo: (id: string) => void }) => {
     <div>
       {convos !== null ? (
         <div>
+          <h4>Conversations</h4>
           <ScrollArea>
             {convos.map((el) => (
               <ConvoTitle

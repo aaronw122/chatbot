@@ -1,9 +1,9 @@
-import type { Message, Messages, Conversation, CreateConversation, MessageType} from '../types/types'
+import type { Message, Messages, Conversation, CreateConversation, MessageType, Content, CleanMessage} from '../types/types'
 
 
 
 export interface Storage {
-  addMessage({ convoId, role, content }: MessageType): Message
+  addMessage({ convoId, role, content }: MessageType): CleanMessage
 
   createConversation({ content, userId }: CreateConversation): Conversation
 
@@ -27,7 +27,7 @@ export class InMemoryStorage implements Storage {
   //create conversation will alwyas be initiated by the user, hence content will always be of type string
   createConversation({ content, userId, save }: CreateConversation): Conversation {
 
-    let trimTitle = content.split(' ').slice(0, 7).join(' ')
+    let trimTitle = content.split(' ').slice(0, 4).join(' ')
 
     const convo: Conversation = {
       id: crypto.randomUUID(),
@@ -50,23 +50,36 @@ export class InMemoryStorage implements Storage {
   }
 
   //anytime you add a message it needs to be in context of the conversation, use convoId to properly append
-  addMessage({ convoId, role, content }: MessageType) {
-
-    const msg: Message = {
-      id: crypto.randomUUID(),
-      convoId: convoId,
-      role: role,
-      content: content,
-      createdAt: new Date().toISOString()
-    }
-    //for now content is just a string, we will not permit others
+  addMessage({ convoId, role, content }: MessageType): CleanMessage {
     if (content === null || content === undefined) {
       throw new Error
     }
-
-    this.messages.set(msg.id, msg)
-    return msg
-
+    if (typeof content !== 'string') {
+      //later can add others for multimodality
+      if (content[0]?.type === 'text') {
+        const parsedMsg = {
+          id: crypto.randomUUID(),
+          convoId: convoId,
+          role: "assistant" as const,
+          content: content[0].text,
+          createdAt: new Date().toISOString()
+        }
+        this.messages.set(parsedMsg.id, parsedMsg)
+        return parsedMsg
+      }
+      throw new Error('non-text is not supported for now')
+    }
+    else {
+      const msg: CleanMessage = {
+        id: crypto.randomUUID(),
+        convoId: convoId,
+        role: role,
+        content: content,
+        createdAt: new Date().toISOString()
+      }
+      this.messages.set(msg.id, msg)
+      return msg
+    }
   }
 
   //a bit extra, but will be good when we scale to auth

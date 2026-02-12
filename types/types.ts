@@ -28,4 +28,20 @@ export interface CreateConversation {
   save?: true | false;
 }
 
-export type MessageType = Anthropic.MessageParam & {convoId: string}
+export type MessageType = Anthropic.MessageParam & { convoId: string }
+
+export type Content = Anthropic.MessageParam["content"]
+
+export interface CleanMessage {
+  id: string,
+  convoId: string,
+  role: "assistant" | "user",
+  content: string,
+  createdAt: string
+}
+
+export type WebSocketMessage = | {
+  type: "updateChat",
+  message: CleanMessage
+} | {type: "fullHistory",
+currentMessages: CleanMessage[]}
