@@ -1,13 +1,11 @@
-import { STRING_LITERAL_DROP_BUNDLE } from 'next/dist/shared/lib/constants'
 import type { Message, Messages, Conversation, CreateConversation, MessageType} from '../types/types'
 
 
 
 interface Storage {
-
   addMessage({ convoId }: { convoId: string }): Message
 
-  createConversation({ content, userId }: CreateConversation): Conversation | Error
+  createConversation({ content, userId }: CreateConversation): Conversation
 
   getConversation({ convoId }: { convoId: string }): Message[] | []
 
@@ -16,10 +14,9 @@ interface Storage {
   saveConversation({ convoId }: { convoId: string }): Conversation
 
   deleteConversation({convoId}: { convoId: string }): void
-
 }
 
-class InMemoryStorage implements Storage {
+export class InMemoryStorage implements Storage {
   //creates a map with ey being uerId, value being a list of conversations
   private conversations: Map<string, Conversation> = new Map()
   private messages: Map<string, Message> = new Map()
@@ -28,7 +25,7 @@ class InMemoryStorage implements Storage {
   // upon sending message, we create conversation AND add it to message class with that convo id
 
   //create conversation will alwyas be initiated by the user, hence content will always be of type string
-  createConversation({ content, userId, save }: CreateConversation) {
+  createConversation({ content, userId, save }: CreateConversation): Conversation {
 
     let trimTitle = content.split(' ').slice(0, 7).join(' ')
 
@@ -57,12 +54,11 @@ class InMemoryStorage implements Storage {
 
     const msg: Message = {
       id: crypto.randomUUID(),
-      convoId: crypto.randomUUID(),
+      convoId: convoId,
       role: role,
       content: content,
       createdAt: new Date().toISOString()
     }
-
     //for now content is just a string, we will not permit others
     if (content === null || content === undefined) {
       throw new Error
@@ -78,6 +74,8 @@ class InMemoryStorage implements Storage {
 
     const convoArr = [...this.conversations.values()]
 
+
+
     const userConvos = convoArr.filter(el => el.userId === userId)
 
     if (userConvos.length === 0) {
@@ -91,6 +89,8 @@ class InMemoryStorage implements Storage {
   getConversation({ convoId }: { convoId: string }) {
 
     const messageArr = [...this.messages.values()]
+
+    console.log('messageArr', messageArr)
 
     const convoMessages = messageArr.filter(el => el.convoId === convoId)
 
@@ -132,5 +132,11 @@ class InMemoryStorage implements Storage {
 
     this.conversations.delete(convoId)
   }
-
+  resetConversations() {
+    //need to both delete the convo and the messages with its id
+    const newConvos = new Map()
+    this.conversations = newConvos
+    const newMessages= new Map()
+    this.messages = newMessages
+  }
 }
