@@ -3,13 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Send } from "lucide-react";
 
 type inputType = {
-  id: string;
-  sendMessage: (id: string) => void;
+  createConvo: () => void;
   handleMsgChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   newMessage: string;
 };
 
-const Input = ({ id, sendMessage, newMessage, handleMsgChange }: inputType) => {
+const HomeInput = ({ createConvo, newMessage, handleMsgChange }: inputType) => {
   return (
     <div className="flex items-center gap-2">
       <Textarea
@@ -20,11 +19,11 @@ const Input = ({ id, sendMessage, newMessage, handleMsgChange }: inputType) => {
       >
         {" "}
       </Textarea>
-      <Button className="rounded-lg" onClick={() => sendMessage(id)}>
+      <Button className="rounded-lg" onClick={() => createConvo()}>
         <Send />
       </Button>
     </div>
   );
 };
 
-export default Input;
+export default HomeInput;

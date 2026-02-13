@@ -10,7 +10,7 @@ const ConvoTitle = ({
   selectConvo: (id: string) => void;
 }) => {
   return (
-    <Button variant="ghost" onClick={() => selectConvo(id)}>
+    <Button variant="ghost" className="pl-0" onClick={() => selectConvo(id)}>
       {" "}
       {title}{" "}
     </Button>
