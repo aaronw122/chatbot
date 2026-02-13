@@ -1,7 +1,6 @@
 import { useContext, createContext, useState } from "react";
 import services from "../services/index";
-import type { convoContext } from "../../../types/types";
-import { Link } from "react-router";
+import type { CleanMessage, convoContext } from "../../../types/types";
 
 //creating context object
 const ConvoContext = createContext<convoContext | null>(null);
@@ -13,13 +12,8 @@ export function useConvo() {
 
 //any children we nest inside the useContext will receive all these variables
 export function ConvoProvider({ children }: { children: React.ReactNode }) {
-  const [currentView, setCurrentView] = useState<"newChat" | "chat">("newChat");
-  const [convoId, setConvoId] = useState<string>("");
   const [newMessage, setNewMessage] = useState("");
-
-  // const selectConvo = (id: string) => {
-  //   setConvoId(id);
-  // };
+  const [optimisticMsg, setOptimisticMsg] = useState<CleanMessage | null>(null);
 
   const handleMsgChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     setNewMessage(event.target.value);
@@ -36,35 +30,15 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const createConversation = async () => {
-    console.log("message sent", newMessage);
-    const res = await services.createConversation({
-      content: newMessage,
-    });
-    setConvoId(res.convoId);
-    setCurrentView("chat");
-    setNewMessage("");
-  };
-
-  const newChat = async () => {
-    setCurrentView("newChat");
-    setNewMessage("");
-    console.log("newChatClicked");
-  };
-
   return (
     <ConvoContext.Provider
       value={{
-        currentView,
-        setCurrentView,
-        convoId,
-        setConvoId,
         newMessage,
         setNewMessage,
         handleMsgChange,
         sendMessage,
-        createConversation,
-        newChat,
+        optimisticMsg,
+        setOptimisticMsg,
       }}
     >
       {children}

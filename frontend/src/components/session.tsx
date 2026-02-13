@@ -2,11 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Chats from "../components/chats";
 import Input from "../components/input";
 import NewChat from "../components/newChat";
-import type {
-  WebSocketMessage,
-  CleanMessage,
-  SessionType,
-} from "../../../types/types";
+import type { WebSocketMessage, CleanMessage } from "../../../types/types";
 import { useParams } from "react-router";
 import { useConvo } from "@/context/convoContext";
 
@@ -23,8 +19,12 @@ const Session = () => {
 
   const { id } = useParams();
 
-  const { handleMsgChange, sendMessage, newChat, newMessage }: SessionType =
-    convo;
+  const { handleMsgChange, sendMessage, newMessage, setOptimisticMsg } = convo;
+
+  //optimistic render
+  useEffect(() => {
+    setOptimisticMsg(null);
+  }, []);
 
   const wsConnect = useCallback(
     function connect() {
@@ -84,16 +84,10 @@ const Session = () => {
     };
   }, [wsConnect]);
 
-  /*
-  useEffect(() => {
-    services.getMessages(id).then((r) => setHistory(r));
-  }, [id]);
-  */
-
   //will have new deps in future,
   return (
-    <div className="flex flex-col h-full pb-5">
-      <NewChat newChat={newChat} />
+    <div className="flex flex-col h-full pb-5 lg:mx-50 md:mx-20 lg:pb-20">
+      <NewChat />
       {socketConnect ? <p> connected </p> : <p> disconnected </p>}
       <div className="flex-1 overflow-y-auto">
         <Chats history={history} />

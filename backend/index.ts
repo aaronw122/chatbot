@@ -82,6 +82,8 @@ wsApp.ws('/messages/:id/ws', async (ws: WebSocket, req) => {
 
     wsMap.get(id)!.add(ws);
 
+    console.log('wsMAP', wsMap)
+
     //once we refactor, fetch exact sessionId history, then check if exists + send.
 
     const currentMessages = await storage.getMessages({convoId: id})
@@ -130,13 +132,13 @@ app.post('/conversations', async (req: Request, res: Response) => {
     const { content, save } = req.body
     //for now hardcoding userId
     const newConvo = await storage.createConversation({ content: content, userId: UUIDplaceholder, save: save })
-    await storage.addMessage({ convoId: newConvo.id, content: content, role: "user" })
+    const userMsg = await storage.addMessage({ convoId: newConvo.id, content: content, role: "user" })
+
     const aiMsg = await getAIResponse(newConvo.id)
 
     console.log('parsed anthropic', aiMsg)
 
     const convoWithRes = await storage.getMessages({convoId: newConvo.id})
-    sendNewMessage(newConvo.id, aiMsg)
     res.json(convoWithRes)
   }
   catch (error) {
