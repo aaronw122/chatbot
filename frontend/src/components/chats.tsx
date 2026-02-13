@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import Chat from "./chat";
 import type { CleanMessage } from "../../../types/types";
 
@@ -12,7 +11,7 @@ const Chats = ({ history }: chatsTypes) => {
   return (
     <div className="flex flex-col">
       {history.map((el) => (
-        <Chat key={el.id} content={el.content} role={el.role} />
+        <Chat key={el.id} content={el.content} role={el.role} id={el.id} />
       ))}
     </div>
   );

@@ -1,5 +1,6 @@
 import WebSocket from 'ws';
 import Anthropic from '@anthropic-ai/sdk'
+import type ChangeEvent from 'react'
 
 export type WSmap = Map<string, Set<WebSocket>>
 
@@ -40,8 +41,24 @@ export interface CleanMessage {
   createdAt: string
 }
 
+export interface ChatProps {
+  //optional, only need for bubble
+  id?: string,
+  content: string,
+  role: "assistant" | "user",
+}
+
 export type WebSocketMessage = | {
   type: "updateChat",
   message: CleanMessage
 } | {type: "fullHistory",
-currentMessages: CleanMessage[]}
+  currentMessages: CleanMessage[]
+}
+
+export type SessionType = {
+  id: string,
+  handleMsgChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void,
+  sendMessage: (id: string) => void,
+  newChat: () => void,
+  newMessage: string
+}
