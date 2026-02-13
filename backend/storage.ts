@@ -1,3 +1,4 @@
+import { createRenderResumeDataCache } from 'next/dist/server/resume-data-cache/resume-data-cache'
 import type { Message, Messages, Conversation, CreateConversation, MessageType, Content, CleanMessage} from '../types/types'
 import { supabaseAdmin } from './supabaseClient'
 
@@ -14,7 +15,7 @@ export interface Storage {
 
   saveConversation({ convoId }: { convoId: string }): Promise<Conversation>
 
-  deleteConversation({convoId}: { convoId: string }): Promise<void>
+  //deleteConversation({convoId}: { convoId: string }): Promise<void>
 }
 
 export class InMemoryStorage implements Storage {
@@ -194,7 +195,7 @@ export class SupabaseStorage implements Storage {
       text = content
     }
     else if (content[0]?.type === 'text') {
-        text = content[0].text
+      text = content[0].text
     }
     else {
       throw new Error('non-text is not supported')
@@ -209,6 +210,7 @@ export class SupabaseStorage implements Storage {
       })
       .select()
       .single()
+
     if (error) throw error
 
     return {
@@ -217,6 +219,59 @@ export class SupabaseStorage implements Storage {
       role: data.role,
       content: data.content,
       createdAt: data.created_at
+    }
+  }
+  async getConversations({ userId }: { userId: string }) {
+    const { data, error } = await supabaseAdmin
+      .from('conversations')
+      .select()
+      .eq('user_id', userId)
+
+    if (error) throw error
+
+    return (data.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      title: row.title,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      save: row.save
+    })))
+  }
+  async getConversation({ convoId }: { convoId: string }) {
+    const { data, error } = await supabaseAdmin
+      .from('messages')
+      .select()
+      .eq('convo_id', convoId)
+
+    if (error) throw error
+    return (data.map(row => ({
+      id: row.id,
+      convoId: row.convo_id,
+      role: row.role,
+      content: row.content,
+      createdAt: row.created_at
+    })))
+  }
+  async saveConversation({ convoId }: { convoId: string }) {
+    const { data, error } = await supabaseAdmin
+      .from('conversations')
+      .update({
+        save: true
+      })
+      .eq('convo_id', convoId)
+      .select()
+      .single()
+
+    if (error) throw error
+
+    return {
+      id: data.id,
+      userId: data.user_id,
+      title: data.title,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      save: data.save
     }
   }
 }

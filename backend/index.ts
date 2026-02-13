@@ -5,18 +5,21 @@ import type{WSmap, Message, CleanMessage} from '../types/types'
 import expressWs, { type Application } from 'express-ws';
 import cors from 'cors';
 import type { WebSocket } from 'ws';
-import { InMemoryStorage, type Storage } from './storage';
+import { InMemoryStorage, SupabaseStorage, type Storage } from './storage';
 import { mcpContent } from '@anthropic-ai/sdk/helpers/beta/mcp.js';
 import { idText } from 'typescript';
 const app = express()
 
 app.use(express.json())
 
+const UUIDplacholder = "00000000-0000-0000-0000-000000000001"
+
 expressWs(app)
 
 const wsApp = app as unknown as Application;
 
-const storage: Storage = new InMemoryStorage();
+const storage: Storage = process.env.USE_SUPABASE === 'true' ? new SupabaseStorage()
+  : new InMemoryStorage()
 
 app.use(cors({ origin: 'http://localhost:5173' }))
 
@@ -114,7 +117,7 @@ wsApp.ws('/messages/:id/ws', async (ws: WebSocket, req) => {
 
 app.get('/conversations', async (req: Request, res: Response) => {
   try {
-    const convos = await storage.getConversations({ userId: "1" })
+    const convos = await storage.getConversations({ userId: UUIDplacholder })
     console.log('convos list', convos)
     res.json(convos)
   }
@@ -128,7 +131,7 @@ app.post('/conversations', async (req: Request, res: Response) => {
   try {
     const { content, save } = req.body
     //for now hardcoding userId
-    const newConvo = await storage.createConversation({ content: content, userId: '1', save: save })
+    const newConvo = await storage.createConversation({ content: content, userId: UUIDplacholder, save: save })
     await storage.addMessage({ convoId: newConvo.id, content: content, role: "user" })
     const aiMsg = await getAIResponse(newConvo.id)
 
