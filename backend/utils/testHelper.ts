@@ -31,12 +31,12 @@ const messages = [
 export const expectedUserConvos = [
   {
     userId: '12',
-    title: 'jack the rabbit hit the',
+    title: 'jack the rabbit hit',
     save: true
   },
   {
     userId: '12',
-    title: 'old lady and the shoe, got me',
+    title: 'old lady and the',
     save: true
   },
 ]

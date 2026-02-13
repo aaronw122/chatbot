@@ -5,18 +5,21 @@ import type{WSmap, Message, CleanMessage} from '../types/types'
 import expressWs, { type Application } from 'express-ws';
 import cors from 'cors';
 import type { WebSocket } from 'ws';
-import { InMemoryStorage, type Storage } from './storage';
+import { InMemoryStorage, SupabaseStorage, type Storage } from './storage';
 import { mcpContent } from '@anthropic-ai/sdk/helpers/beta/mcp.js';
 import { idText } from 'typescript';
 const app = express()
 
 app.use(express.json())
 
+const UUIDplacholder = "00000000-0000-0000-0000-000000000001"
+
 expressWs(app)
 
 const wsApp = app as unknown as Application;
 
-const storage: Storage = new InMemoryStorage();
+const storage: Storage = process.env.USE_SUPABASE === 'true' ? new SupabaseStorage()
+  : new InMemoryStorage()
 
 app.use(cors({ origin: 'http://localhost:5173' }))
 
@@ -60,7 +63,7 @@ const sendNewMessage = (id: string, message: CleanMessage) => {
 }
 
 const getAIResponse = async (convoId: string) => {
-  const updatedMessages = storage.getConversation({ convoId })
+  const updatedMessages = await storage.getConversation({ convoId })
     const client = new Anthropic()
     const params: Anthropic.MessageCreateParams = {
       max_tokens: 1000,
@@ -68,96 +71,125 @@ const getAIResponse = async (convoId: string) => {
       model: 'claude-haiku-4-5-20251001'
     }
     const message = await client.messages.create(params)
-    return storage.addMessage({ convoId, role: message.role, content: message.content })
+    return await storage.addMessage({ convoId, role: message.role, content: message.content })
 }
 
-wsApp.ws('/messages/:id/ws', (ws: WebSocket, req) => {
-  const id = req.params.id as string;
-  //later will check for id generally and have some checks on if the id even exists in history object
-  if (!wsMap.has(id)) {
-    wsMap.set(id, new Set())
-  }
-
-  wsMap.get(id)!.add(ws);
-
-  //once we refactor, fetch exact sessionId history, then check if exists + send.
-
-  const currentMessages = storage.getConversation({convoId: id})
-
-  if (currentMessages) {
-    ws.send(JSON.stringify({
-      type: 'fullHistory',
-      currentMessages
-    }));
-  }
-
-  ws.on('close', () => {
-    const connections = wsMap.get(id)
-    if (connections) {
-      connections.delete(ws)
-      if (connections.size === 0) {
-        wsMap.delete(id)
-      }
+wsApp.ws('/messages/:id/ws', async (ws: WebSocket, req) => {
+  try {
+    const id = req.params.id as string;
+    //later will check for id generally and have some checks on if the id even exists in history object
+    if (!wsMap.has(id)) {
+      wsMap.set(id, new Set())
     }
-  })
 
-  ws.on('error', (error) => {
-    console.error('websocket error:', error)
-  })
+    wsMap.get(id)!.add(ws);
 
+    //once we refactor, fetch exact sessionId history, then check if exists + send.
+
+    const currentMessages = await storage.getConversation({convoId: id})
+
+    if (currentMessages) {
+      ws.send(JSON.stringify({
+        type: 'fullHistory',
+        currentMessages
+      }));
+    }
+
+    ws.on('close', () => {
+      const connections = wsMap.get(id)
+      if (connections) {
+        connections.delete(ws)
+        if (connections.size === 0) {
+          wsMap.delete(id)
+        }
+      }
+    })
+    ws.on('error', (error) => {
+      console.error('websocket error:', error)
+    })
+  }
+
+  catch (error) {
+    console.log('websocket error', error)
+    ws.close()
+  }
 })
 
 app.get('/conversations', async (req: Request, res: Response) => {
-  const convos = storage.getConversations({ userId: "1" })
-  console.log('convos list', convos)
-  res.json(convos)
+  try {
+    const convos = await storage.getConversations({ userId: UUIDplacholder })
+    console.log('convos list', convos)
+    res.json(convos)
+  }
+  catch (error) {
+    console.error('failed to get conversation', error)
+    res.status(500).json({error: "server error"})
+  }
 })
 
 app.post('/conversations', async (req: Request, res: Response) => {
-  const { content, save } = req.body
-  //for now hardcoding userId
-  const newConvo = storage.createConversation({ content: content, userId: '1', save: save })
-  storage.addMessage({ convoId: newConvo.id, content: content, role: "user" })
-  const aiMsg = await getAIResponse(newConvo.id)
+  try {
+    const { content, save } = req.body
+    //for now hardcoding userId
+    const newConvo = await storage.createConversation({ content: content, userId: UUIDplacholder, save: save })
+    await storage.addMessage({ convoId: newConvo.id, content: content, role: "user" })
+    const aiMsg = await getAIResponse(newConvo.id)
 
-  console.log('parsed anthropic', aiMsg)
+    console.log('parsed anthropic', aiMsg)
 
-  const convoWithRes = storage.getConversation({convoId: newConvo.id})
-  sendNewMessage(newConvo.id, aiMsg)
-  res.json(convoWithRes)
+    const convoWithRes = await storage.getConversation({convoId: newConvo.id})
+    sendNewMessage(newConvo.id, aiMsg)
+    res.json(convoWithRes)
+  }
+  catch (error) {
+    console.error('failed to add conversation', error)
+    res.status(500).json({error: "server error"})
+  }
 })
 
 app.get('/messages/:id', async (req: Request, res: Response) => {
-  const id = req.params.id as string
-  // need to fix axios after as well to send through convoId
-  const messages = storage.getConversation({ convoId: id })
-  console.log('messages express', messages)
-  res.json(messages)
+  try {
+    const id = req.params.id as string
+    // need to fix axios after as well to send through convoId
+    const messages = await storage.getConversation({ convoId: id })
+    console.log('messages express', messages)
+    res.json(messages)
+  }
+  catch (error) {
+      console.error('failed to get messages for convo', error)
+      res.status(500).json({error: "server error"})
+  }
 })
 
 app.post('/messages/:id', async (req: Request, res: Response) => {
 
-  const id = req.params.id as string
-  console.log('messages id', id)
+  try {
+    const id = req.params.id as string
+    console.log('messages id', id)
 
-  const body = req.body
-  console.log('request body', body)
+    const body = req.body
+    console.log('request body', body)
 
-  const post = storage.addMessage({ convoId: id, role: body.role, content: body.content })
+    const post = await storage.addMessage({ convoId: id, role: body.role, content: body.content })
 
-  console.log('post', post)
-  //refactor client handling so they just append new message into history state
-  sendNewMessage(id, post)
+    console.log('post', post)
+    //refactor client handling so they just append new message into history state
+    sendNewMessage(id, post)
 
-  //getAIResponse performs the addMessage post inside
-  const aiMsg = await getAIResponse(id)
+    //getAIResponse performs the addMessage post inside
+    const aiMsg = await getAIResponse(id)
 
-  console.log('parsed anthropic', aiMsg)
+    console.log('parsed anthropic', aiMsg)
 
-  sendNewMessage(id, aiMsg)
+    sendNewMessage(id, aiMsg)
 
-  //not firing
-  return res.status(200).json({message: "newMessage sent"})
+    //not firing
+    return res.status(200).json({message: "newMessage sent"})
+  }
+  catch (error) {
+      console.error('failed to send message', error)
+      res.status(500).json({error: "server error"})
+  }
 })
 
 const PORT = 3000

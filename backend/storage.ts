@@ -1,19 +1,21 @@
+import { createRenderResumeDataCache } from 'next/dist/server/resume-data-cache/resume-data-cache'
 import type { Message, Messages, Conversation, CreateConversation, MessageType, Content, CleanMessage} from '../types/types'
+import { supabaseAdmin } from './supabaseClient'
 
 
 
 export interface Storage {
-  addMessage({ convoId, role, content }: MessageType): CleanMessage
+  addMessage({ convoId, role, content }: MessageType): Promise<CleanMessage>
 
-  createConversation({ content, userId }: CreateConversation): Conversation
+  createConversation({ content, userId }: CreateConversation): Promise<Conversation>
 
-  getConversation({ convoId }: { convoId: string }): Message[] | []
+  getConversation({ convoId }: { convoId: string }): Promise<Message[] | []>
 
-  getConversations({ userId }: { userId: string }): Conversation[]
+  getConversations({ userId }: { userId: string }): Promise<Conversation[]>
 
-  saveConversation({ convoId }: { convoId: string }): Conversation
+  saveConversation({ convoId }: { convoId: string }): Promise<Conversation>
 
-  deleteConversation({convoId}: { convoId: string }): void
+  //deleteConversation({convoId}: { convoId: string }): Promise<void>
 }
 
 export class InMemoryStorage implements Storage {
@@ -25,7 +27,7 @@ export class InMemoryStorage implements Storage {
   // upon sending message, we create conversation AND add it to message class with that convo id
 
   //create conversation will alwyas be initiated by the user, hence content will always be of type string
-  createConversation({ content, userId, save }: CreateConversation): Conversation {
+  async createConversation({ content, userId, save }: CreateConversation): Promise<Conversation> {
 
     let trimTitle = content.split(' ').slice(0, 4).join(' ')
 
@@ -50,7 +52,7 @@ export class InMemoryStorage implements Storage {
   }
 
   //anytime you add a message it needs to be in context of the conversation, use convoId to properly append
-  addMessage({ convoId, role, content }: MessageType): CleanMessage {
+  async addMessage({ convoId, role, content }: MessageType): Promise<CleanMessage> {
     if (content === null || content === undefined) {
       throw new Error
     }
@@ -60,14 +62,14 @@ export class InMemoryStorage implements Storage {
         const parsedMsg = {
           id: crypto.randomUUID(),
           convoId: convoId,
-          role: "assistant" as const,
+          role: role,
           content: content[0].text,
           createdAt: new Date().toISOString()
         }
         this.messages.set(parsedMsg.id, parsedMsg)
         return parsedMsg
       }
-      throw new Error('non-text is not supported for now')
+      throw new Error('non-text is not supported')
     }
     else {
       const msg: CleanMessage = {
@@ -83,7 +85,7 @@ export class InMemoryStorage implements Storage {
   }
 
   //a bit extra, but will be good when we scale to auth
-  getConversations({ userId }: { userId: string }) {
+  async getConversations({ userId }: { userId: string }) {
 
     const convoArr = [...this.conversations.values()]
 
@@ -97,7 +99,7 @@ export class InMemoryStorage implements Storage {
     return userConvos
   }
 
-  getConversation({ convoId }: { convoId: string }) {
+  async getConversation({ convoId }: { convoId: string }) {
 
     const messageArr = [...this.messages.values()]
 
@@ -114,7 +116,7 @@ export class InMemoryStorage implements Storage {
   }
 
   //for when a bubble is expanded to a full convo
-  saveConversation({ convoId }: { convoId: string }) {
+  async saveConversation({ convoId }: { convoId: string }) {
     const bubbleConvo = this.conversations.get(convoId) as Conversation
 
     const fullConvo = {
@@ -131,7 +133,7 @@ export class InMemoryStorage implements Storage {
     return fullConvo
   }
 
-  deleteConversation({ convoId }: { convoId: string }) {
+  async deleteConversation({ convoId }: { convoId: string }) {
     //need to both delete the convo and the messages with its id
     const messageArr = [...this.messages.values()]
 
@@ -143,11 +145,133 @@ export class InMemoryStorage implements Storage {
 
     this.conversations.delete(convoId)
   }
-  resetConversations() {
+  async resetConversations() {
     //need to both delete the convo and the messages with its id
     const newConvos = new Map()
     this.conversations = newConvos
     const newMessages= new Map()
     this.messages = newMessages
+  }
+}
+
+export class SupabaseStorage implements Storage {
+  async createConversation({ content, userId, save }: CreateConversation): Promise<Conversation> {
+    let trimTitle = content.split(' ').slice(0, 4).join(' ')
+
+    //every supabase quyery returns object with data and error
+    const { data, error } = await supabaseAdmin
+      .from('conversations')
+
+      // inserts a new row, mapping from camel to snake
+      .insert({
+        user_id: userId,
+        title: trimTitle,
+        save: save ?? true,
+      })
+      //similar to sql, return row back to us
+      .select()
+      //unwraps array to become a single object
+      .single()
+
+    if (error) throw error
+
+    return {
+      id: data.id,
+      userId: data.user_id,
+      title: data.title,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      save: data.save
+    }
+  }
+  async addMessage({ convoId, role, content }: MessageType): Promise<CleanMessage> {
+    if (content === null || content === undefined) {
+      throw new Error
+    }
+    let text = ''
+
+    //normalize string here
+    if (typeof content === 'string') {
+      text = content
+    }
+    else if (content[0]?.type === 'text') {
+      text = content[0].text
+    }
+    else {
+      throw new Error('non-text is not supported')
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('messages')
+      .insert({
+        convo_id: convoId,
+        content: text,
+        role: role
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+
+    return {
+      id: data.id,
+      convoId: data.convo_id,
+      role: data.role,
+      content: data.content,
+      createdAt: data.created_at
+    }
+  }
+  async getConversations({ userId }: { userId: string }) {
+    const { data, error } = await supabaseAdmin
+      .from('conversations')
+      .select()
+      .eq('user_id', userId)
+
+    if (error) throw error
+
+    return (data.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      title: row.title,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      save: row.save
+    })))
+  }
+  async getConversation({ convoId }: { convoId: string }) {
+    const { data, error } = await supabaseAdmin
+      .from('messages')
+      .select()
+      .eq('convo_id', convoId)
+
+    if (error) throw error
+    return (data.map(row => ({
+      id: row.id,
+      convoId: row.convo_id,
+      role: row.role,
+      content: row.content,
+      createdAt: row.created_at
+    })))
+  }
+  async saveConversation({ convoId }: { convoId: string }) {
+    const { data, error } = await supabaseAdmin
+      .from('conversations')
+      .update({
+        save: true
+      })
+      .eq('convo_id', convoId)
+      .select()
+      .single()
+
+    if (error) throw error
+
+    return {
+      id: data.id,
+      userId: data.user_id,
+      title: data.title,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      save: data.save
+    }
   }
 }

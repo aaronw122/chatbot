@@ -44,7 +44,6 @@ function App() {
   const newChat = async () => {
     setCurrentView("newChat");
     console.log("newChatClicked");
-    await services.resetMessages();
   };
 
   return (
