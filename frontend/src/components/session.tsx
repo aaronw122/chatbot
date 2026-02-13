@@ -7,22 +7,31 @@ import type {
   CleanMessage,
   SessionType,
 } from "../../../types/types";
+import { useConvo } from "@/context/convoContext";
 
-const Session = ({
-  id,
-  handleMsgChange,
-  sendMessage,
-  newChat,
-  newMessage,
-}: SessionType) => {
+const Session = () => {
   const [socketConnect, setSocketConnect] = useState<true | false>(false);
   const webSocket = useRef<WebSocket | null>(null);
   const [history, setHistory] = useState<CleanMessage[] | []>([]);
 
+  const convo = useConvo();
+
+  if (!convo) throw new Error("useConvo not working");
+
+  const {
+    convoId,
+    handleMsgChange,
+    sendMessage,
+    newChat,
+    newMessage,
+  }: SessionType = convo;
+
   const wsConnect = useCallback(
     function connect() {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(`${protocol}//localhost:3000/messages/${id}/ws`);
+      const ws = new WebSocket(
+        `${protocol}//localhost:3000/messages/${convoId}/ws`,
+      );
 
       webSocket.current = ws;
 
@@ -62,7 +71,7 @@ const Session = ({
       };
       //no deps for now, but when we refactor arrayy there will be - id, maybe whatever we use to switch views
     },
-    [id],
+    [convoId],
   );
 
   useEffect(() => {
@@ -95,7 +104,7 @@ const Session = ({
         sendMessage={sendMessage}
         newMessage={newMessage}
         handleMsgChange={handleMsgChange}
-        id={id}
+        id={convoId}
       />
     </div>
   );

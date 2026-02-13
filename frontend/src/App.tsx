@@ -3,6 +3,7 @@ import Session from "./components/session";
 import { useState } from "react";
 import services from "./services/index";
 import HomeInput from "./components/homeInput";
+import { useConvo } from "./context/convoContext";
 
 function App() {
   //websocket wikll automatically send back new message, update all messages
@@ -45,10 +46,17 @@ function App() {
   //   setCurrentView("newChat");
   //   console.log("newChatClicked");
   // };
+  //
+
+  const convo = useConvo();
+
+  if (!convo) throw new Error("useConvo not working");
+
+  const { currentView } = convo;
 
   return (
     <div className="flex flex-row mx-10 my-5 h-screen">
-      <ConvoList selectConvo={selectConvo}></ConvoList>
+      <ConvoList />
       <div className="flex-1 h-full">
         {currentView === "newChat" ? (
           <div className="flex flex-col justify-center h-full lg:mx-80 md:mx-20 sm:mx-15 my-5 gap-1">
@@ -56,21 +64,11 @@ function App() {
               {"  "}
               bubble{" "}
             </h1>
-            <HomeInput
-              createConversation={createConversation}
-              newMessage={newMessage}
-              handleMsgChange={handleMsgChange}
-            />
+            <HomeInput />
           </div>
         ) : (
           <div className="mx-10 h-full">
-            <Session
-              id={convoId}
-              handleMsgChange={handleMsgChange}
-              sendMessage={sendMessage}
-              newChat={newChat}
-              newMessage={newMessage}
-            />
+            <Session />
           </div>
         )}
       </div>

@@ -56,7 +56,7 @@ export type WebSocketMessage = | {
 }
 
 export type SessionType = {
-  id: string,
+  convoId: string,
   handleMsgChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void,
   sendMessage: (id: string) => void,
   newChat: () => void,
