@@ -2,36 +2,34 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Chats from "../components/chats";
 import Input from "../components/input";
 import NewChat from "../components/newChat";
-import type {
-  WebSocketMessage,
-  CleanMessage,
-  SessionType,
-} from "../../../types/types";
+import type { WebSocketMessage, CleanMessage } from "../../../types/types";
+import { useParams } from "react-router";
 import { useConvo } from "@/context/convoContext";
 
 const Session = () => {
   const [socketConnect, setSocketConnect] = useState<true | false>(false);
   const webSocket = useRef<WebSocket | null>(null);
-  const [history, setHistory] = useState<CleanMessage[] | []>([]);
+  const [chatHistory, setChatHistory] = useState<CleanMessage[] | []>([]);
 
   const convo = useConvo();
 
   if (!convo) throw new Error("useConvo not working");
 
-  const {
-    convoId,
-    handleMsgChange,
-    sendMessage,
-    newChat,
-    newMessage,
-  }: SessionType = convo;
+  //pull id from react router link when clicked
+
+  const { id } = useParams();
+
+  const { handleMsgChange, sendMessage, newMessage, setOptimisticMsg } = convo;
+
+  //optimistic render
+  useEffect(() => {
+    setOptimisticMsg(null);
+  }, []);
 
   const wsConnect = useCallback(
     function connect() {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(
-        `${protocol}//localhost:3000/messages/${convoId}/ws`,
-      );
+      const ws = new WebSocket(`${protocol}//localhost:3000/messages/${id}/ws`);
 
       webSocket.current = ws;
 
@@ -46,9 +44,9 @@ const Session = () => {
           console.log("event data", event.data);
           if (data.type === "updateChat") {
             console.log("data.history", data.message);
-            setHistory((prev) => [...prev, data.message]);
+            setChatHistory((prev) => [...prev, data.message]);
           } else if (data.type === "fullHistory") {
-            setHistory(data.currentMessages);
+            setChatHistory(data.currentMessages);
           }
         } catch (error) {
           console.error("failed to parse message", error);
@@ -71,7 +69,7 @@ const Session = () => {
       };
       //no deps for now, but when we refactor arrayy there will be - id, maybe whatever we use to switch views
     },
-    [convoId],
+    [id],
   );
 
   useEffect(() => {
@@ -86,25 +84,19 @@ const Session = () => {
     };
   }, [wsConnect]);
 
-  /*
-  useEffect(() => {
-    services.getMessages(id).then((r) => setHistory(r));
-  }, [id]);
-  */
-
   //will have new deps in future,
   return (
-    <div className="flex flex-col h-full pb-5">
-      <NewChat newChat={newChat} />
+    <div className="flex flex-col h-full pb-5 lg:mx-50 md:mx-20 lg:pb-20">
+      <NewChat />
       {socketConnect ? <p> connected </p> : <p> disconnected </p>}
       <div className="flex-1 overflow-y-auto">
-        <Chats history={history} />
+        <Chats history={chatHistory} />
       </div>
       <Input
         sendMessage={sendMessage}
         newMessage={newMessage}
         handleMsgChange={handleMsgChange}
-        id={convoId}
+        id={id!}
       />
     </div>
   );

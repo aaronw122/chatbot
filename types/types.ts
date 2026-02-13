@@ -56,23 +56,16 @@ export type WebSocketMessage = | {
 }
 
 export type SessionType = {
-  convoId: string,
   handleMsgChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void,
   sendMessage: (id: string) => void,
-  newChat: () => void,
   newMessage: string
 }
 
 export type convoContext = {
-  currentView: "newChat" | "chat",
-  setCurrentView: React.Dispatch<React.SetStateAction<"newChat" | "chat">>,
-  convoId: string;
-  setConvoId: React.Dispatch<React.SetStateAction<string>>,
   newMessage: string,
   setNewMessage: React.Dispatch<React.SetStateAction<string>>,
-  selectConvo: (id: string) => void,
+  optimisticMsg: CleanMessage[],
+  setOptimisticMsg: React.Dispatch<React.SetStateAction<CleanMessage[] | null>>,
   handleMsgChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void,
-  sendMessage: (id: string) => void,
-  createConversation: () => void,
-  newChat: () => void
+  sendMessage: (id: string) => void
 }

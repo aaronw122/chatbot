@@ -1,14 +1,17 @@
 import { Button } from "@/components/ui/button";
 
 import { Pencil } from "lucide-react";
+import { useNavigate } from "react-router";
 
-type NewChatProps = {
-  newChat: () => void;
-};
+const NewChat = () => {
+  const navigate = useNavigate();
 
-const NewChat = ({ newChat }: NewChatProps) => {
+  const openHome = () => {
+    navigate("/");
+  };
+
   return (
-    <Button className="ml-auto" variant="outline" onClick={() => newChat()}>
+    <Button className="ml-auto" variant="outline" onClick={() => openHome()}>
       <Pencil />
     </Button>
   );
