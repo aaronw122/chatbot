@@ -7,44 +7,44 @@ import HomeInput from "./components/homeInput";
 function App() {
   //websocket wikll automatically send back new message, update all messages
 
-  const [currentView, setCurrentView] = useState<"newChat" | "chat">("newChat");
-  const [convoId, setConvoId] = useState<string>("");
-  const [newMessage, setNewMessage] = useState("");
+  // const [currentView, setCurrentView] = useState<"newChat" | "chat">("newChat");
+  // const [convoId, setConvoId] = useState<string>("");
+  // const [newMessage, setNewMessage] = useState("");
 
-  const selectConvo = (id: string) => {
-    setConvoId(id);
-    setCurrentView("chat");
-  };
+  // const selectConvo = (id: string) => {
+  //   setConvoId(id);
+  //   setCurrentView("chat");
+  // };
 
-  const handleMsgChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setNewMessage(event.target.value);
-    console.log(event.target.value);
-  };
+  // const handleMsgChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+  //   setNewMessage(event.target.value);
+  //   console.log(event.target.value);
+  // };
 
-  const sendMessage = async (id: string) => {
-    console.log("message sent", newMessage);
-    setNewMessage("");
-    await services.sendMessage({
-      content: newMessage,
-      role: "user",
-      convoId: id,
-    });
-  };
+  // const sendMessage = async (id: string) => {
+  //   console.log("message sent", newMessage);
+  //   setNewMessage("");
+  //   await services.sendMessage({
+  //     content: newMessage,
+  //     role: "user",
+  //     convoId: id,
+  //   });
+  // };
 
-  const createConversation = async () => {
-    console.log("message sent", newMessage);
-    const res = await services.createConversation({
-      content: newMessage,
-    });
-    setConvoId(res.convoId);
-    setCurrentView("chat");
-    setNewMessage("");
-  };
+  // const createConversation = async () => {
+  //   console.log("message sent", newMessage);
+  //   const res = await services.createConversation({
+  //     content: newMessage,
+  //   });
+  //   setConvoId(res.convoId);
+  //   setCurrentView("chat");
+  //   setNewMessage("");
+  // };
 
-  const newChat = async () => {
-    setCurrentView("newChat");
-    console.log("newChatClicked");
-  };
+  // const newChat = async () => {
+  //   setCurrentView("newChat");
+  //   console.log("newChatClicked");
+  // };
 
   return (
     <div className="flex flex-row mx-10 my-5 h-screen">
