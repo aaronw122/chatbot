@@ -70,7 +70,6 @@ export type convoContext = {
   setConvoId: React.Dispatch<React.SetStateAction<string>>,
   newMessage: string,
   setNewMessage: React.Dispatch<React.SetStateAction<string>>,
-  selectConvo: (id: string) => void,
   handleMsgChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void,
   sendMessage: (id: string) => void,
   createConversation: () => void,

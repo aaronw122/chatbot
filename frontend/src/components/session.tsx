@@ -7,6 +7,7 @@ import type {
   CleanMessage,
   SessionType,
 } from "../../../types/types";
+import { useParams } from "react-router";
 import { useConvo } from "@/context/convoContext";
 
 const Session = () => {
@@ -18,20 +19,17 @@ const Session = () => {
 
   if (!convo) throw new Error("useConvo not working");
 
-  const {
-    convoId,
-    handleMsgChange,
-    sendMessage,
-    newChat,
-    newMessage,
-  }: SessionType = convo;
+  //pull id from react router link when clicked
+
+  const { id } = useParams();
+
+  const { handleMsgChange, sendMessage, newChat, newMessage }: SessionType =
+    convo;
 
   const wsConnect = useCallback(
     function connect() {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(
-        `${protocol}//localhost:3000/messages/${convoId}/ws`,
-      );
+      const ws = new WebSocket(`${protocol}//localhost:3000/messages/${id}/ws`);
 
       webSocket.current = ws;
 
@@ -71,7 +69,7 @@ const Session = () => {
       };
       //no deps for now, but when we refactor arrayy there will be - id, maybe whatever we use to switch views
     },
-    [convoId],
+    [id],
   );
 
   useEffect(() => {
@@ -104,7 +102,7 @@ const Session = () => {
         sendMessage={sendMessage}
         newMessage={newMessage}
         handleMsgChange={handleMsgChange}
-        id={convoId}
+        id={id!}
       />
     </div>
   );
