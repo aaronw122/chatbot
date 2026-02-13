@@ -10,10 +10,12 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ConvoProvider>
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<App />} />
-          <Route path="/chat/:id" element={<Session />} />
-        </Routes>
+        <div className="h-screen">
+          <Routes>
+            <Route path="/" element={<App />} />
+            <Route path="/chat/:id" element={<Session />} />
+          </Routes>
+        </div>
       </BrowserRouter>
     </ConvoProvider>
   </StrictMode>,
