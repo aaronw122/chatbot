@@ -45,7 +45,7 @@ const HomeInput = () => {
       {optimisticMsg ? (
         <Chats history={optimisticMsg} />
       ) : (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-center gap-2 w-full">
           <Textarea
             placeholder="ask away"
             className="min-h-0 rounded-lg resize-none border-2 shadow-none focus-visible:ring-1"
