@@ -6,13 +6,11 @@ import expressWs, { type Application } from 'express-ws';
 import cors from 'cors';
 import type { WebSocket } from 'ws';
 import { InMemoryStorage, SupabaseStorage, type Storage } from './storage';
-import { mcpContent } from '@anthropic-ai/sdk/helpers/beta/mcp.js';
-import { idText } from 'typescript';
 const app = express()
 
 app.use(express.json())
 
-const UUIDplacholder = "00000000-0000-0000-0000-000000000001"
+const UUIDplaceholder = "00000000-0000-0000-0000-000000000001"
 
 expressWs(app)
 
@@ -23,7 +21,7 @@ const storage: Storage = process.env.USE_SUPABASE === 'true' ? new SupabaseStora
 
 app.use(cors({ origin: 'http://localhost:5173' }))
 
-type claudeResponse = {
+type ClaudeResponse = {
   id: string,
   type: "message" | "image",
   role: "assistant" | "user",
@@ -63,7 +61,7 @@ const sendNewMessage = (id: string, message: CleanMessage) => {
 }
 
 const getAIResponse = async (convoId: string) => {
-  const updatedMessages = await storage.getConversation({ convoId })
+  const updatedMessages = await storage.getMessages({ convoId })
     const client = new Anthropic()
     const params: Anthropic.MessageCreateParams = {
       max_tokens: 1000,
@@ -86,7 +84,7 @@ wsApp.ws('/messages/:id/ws', async (ws: WebSocket, req) => {
 
     //once we refactor, fetch exact sessionId history, then check if exists + send.
 
-    const currentMessages = await storage.getConversation({convoId: id})
+    const currentMessages = await storage.getMessages({convoId: id})
 
     if (currentMessages) {
       ws.send(JSON.stringify({
@@ -117,7 +115,7 @@ wsApp.ws('/messages/:id/ws', async (ws: WebSocket, req) => {
 
 app.get('/conversations', async (req: Request, res: Response) => {
   try {
-    const convos = await storage.getConversations({ userId: UUIDplacholder })
+    const convos = await storage.getConversations({ userId: UUIDplaceholder })
     console.log('convos list', convos)
     res.json(convos)
   }
@@ -131,13 +129,13 @@ app.post('/conversations', async (req: Request, res: Response) => {
   try {
     const { content, save } = req.body
     //for now hardcoding userId
-    const newConvo = await storage.createConversation({ content: content, userId: UUIDplacholder, save: save })
+    const newConvo = await storage.createConversation({ content: content, userId: UUIDplaceholder, save: save })
     await storage.addMessage({ convoId: newConvo.id, content: content, role: "user" })
     const aiMsg = await getAIResponse(newConvo.id)
 
     console.log('parsed anthropic', aiMsg)
 
-    const convoWithRes = await storage.getConversation({convoId: newConvo.id})
+    const convoWithRes = await storage.getMessages({convoId: newConvo.id})
     sendNewMessage(newConvo.id, aiMsg)
     res.json(convoWithRes)
   }
@@ -151,7 +149,7 @@ app.get('/messages/:id', async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string
     // need to fix axios after as well to send through convoId
-    const messages = await storage.getConversation({ convoId: id })
+    const messages = await storage.getMessages({ convoId: id })
     console.log('messages express', messages)
     res.json(messages)
   }

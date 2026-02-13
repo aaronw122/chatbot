@@ -2,13 +2,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Send } from "lucide-react";
 
-type inputType = {
-  createConvo: () => void;
+type HomeInputProps = {
+  createConversation: () => void;
   handleMsgChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   newMessage: string;
 };
 
-const HomeInput = ({ createConvo, newMessage, handleMsgChange }: inputType) => {
+const HomeInput = ({
+  createConversation,
+  newMessage,
+  handleMsgChange,
+}: HomeInputProps) => {
   return (
     <div className="flex items-center gap-2">
       <Textarea
@@ -19,7 +23,7 @@ const HomeInput = ({ createConvo, newMessage, handleMsgChange }: inputType) => {
       >
         {" "}
       </Textarea>
-      <Button className="rounded-lg" onClick={() => createConvo()}>
+      <Button className="rounded-lg" onClick={() => createConversation()}>
         <Send />
       </Button>
     </div>

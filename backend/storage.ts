@@ -9,7 +9,7 @@ export interface Storage {
 
   createConversation({ content, userId }: CreateConversation): Promise<Conversation>
 
-  getConversation({ convoId }: { convoId: string }): Promise<Message[] | []>
+  getMessages({ convoId }: { convoId: string }): Promise<Message[] | []>
 
   getConversations({ userId }: { userId: string }): Promise<Conversation[]>
 
@@ -99,7 +99,7 @@ export class InMemoryStorage implements Storage {
     return userConvos
   }
 
-  async getConversation({ convoId }: { convoId: string }) {
+  async getMessages({ convoId }: { convoId: string }) {
 
     const messageArr = [...this.messages.values()]
 
@@ -110,8 +110,6 @@ export class InMemoryStorage implements Storage {
     if (convoMessages.length === 0) {
       return []
     }
-    //for now content is just a string, we will not permit others
-    console.log('user Convos', convoMessages)
     return convoMessages
   }
 
@@ -161,7 +159,6 @@ export class SupabaseStorage implements Storage {
     //every supabase quyery returns object with data and error
     const { data, error } = await supabaseAdmin
       .from('conversations')
-
       // inserts a new row, mapping from camel to snake
       .insert({
         user_id: userId,
@@ -238,7 +235,7 @@ export class SupabaseStorage implements Storage {
       save: row.save
     })))
   }
-  async getConversation({ convoId }: { convoId: string }) {
+  async getMessages({ convoId }: { convoId: string }) {
     const { data, error } = await supabaseAdmin
       .from('messages')
       .select()
