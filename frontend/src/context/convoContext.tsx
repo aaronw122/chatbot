@@ -2,9 +2,15 @@ import { useContext, createContext, useState } from "react";
 import services from "../services/index";
 import type { convoContext } from "../../../types/types";
 
+//creating context object
 const ConvoContext = createContext<convoContext | null>(null);
 
-//any children we nest inside the useContext will receive it.
+//group useContext and ConvoContext so children dont need to imprt useContext AND convoContext
+export function useConvo() {
+  return useContext(ConvoContext);
+}
+
+//any children we nest inside the useContext will receive all these variables
 export function ConvoProvider({ children }: { children: React.ReactNode }) {
   const [currentView, setCurrentView] = useState<"newChat" | "chat">("newChat");
   const [convoId, setConvoId] = useState<string>("");
@@ -65,8 +71,4 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
       {children}
     </ConvoContext.Provider>
   );
-}
-
-export function useConvo() {
-  return useContext(ConvoContext);
 }

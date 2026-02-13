@@ -3,6 +3,7 @@ import { type Conversation } from "../../../types/types";
 import services from "../services/index";
 import ConvoTitle from "./convoTitle";
 import { ScrollArea } from "./ui/scroll-area";
+import { useConvo } from "@/context/convoContext";
 
 //state: conversations in array format, mapped using the id as key
 // onClick, take them to a given session depending on convoId
@@ -10,8 +11,14 @@ import { ScrollArea } from "./ui/scroll-area";
 // useEffect to generate conversations on render v
 // for now assume userId === 1, in the future we will need to do something else
 
-const ConvoList = ({ selectConvo }: { selectConvo: (id: string) => void }) => {
+const ConvoList = () => {
   const [convos, setConvos] = useState<null | Conversation[]>(null);
+
+  const convo = useConvo();
+
+  if (!convo) throw new Error("useConvo not working");
+
+  const { selectConvo } = convo;
 
   useEffect(() => {
     services.getConversations().then((r) => setConvos(r));
