@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express, { type Request, type Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk'
-import type{WSmap, Message} from '../types/types'
+import type{WSmap, Message, CleanMessage} from '../types/types'
 import expressWs, { type Application } from 'express-ws';
 import cors from 'cors';
 import type { WebSocket } from 'ws';
@@ -33,29 +33,14 @@ type claudeResponse = {
   },
 }
 
-
-//user history
-let history: (Anthropic.MessageParam & { id: string })[] = [
-  {
-    role: "user",
-    content: "hey claude why did britain lose the revolutionary war?",
-    id: "1"
-  },
-  {
-    role: "assistant",
-    content: "Britain struggled to sustain a war fought 3,000 miles across the Atlantic, with overstretched supply lines and difficulty reinforcing troops, while facing a population that knew the terrain and was fighting for its own homeland.The entry of France, Spain, and the Netherlands turned a colonial rebellion into a global conflict, stretching British military resources to the breaking point and ultimately making the war unsustainable.",
-    id: "2"
-  }
-]
-
 const wsMap: WSmap = new Map<string, Set<WebSocket>>
 
 //pass through whole new array each Req
 
 //right now its simpler, so i will pass through a mock string, but likely will want enabled for multiple chats nayways
-const sendNewMessage = (id: string, message: (Anthropic.MessageParam & { id: string })) => {
+const sendNewMessage = (id: string, message: CleanMessage) => {
   //send id of 1 thru the post request
-  const connections = wsMap.get('1')
+  const connections = wsMap.get(id)
 
   console.log('updating chat, connections:', connections)
 
@@ -68,6 +53,7 @@ const sendNewMessage = (id: string, message: (Anthropic.MessageParam & { id: str
           type: 'updateChat',
           message
         }))
+        console.log('ws send event may dupe', message)
       }
     });
   }
@@ -85,25 +71,9 @@ const getAIResponse = async (convoId: string) => {
     return storage.addMessage({ convoId, role: message.role, content: message.content })
 }
 
-const getResponseParse = async (message: Message) => {
-  if (typeof message.content === 'string' || typeof !message.content[0]) return null
-  if (message.content[0]!.type === 'text') {
-    const parsedMsg = {
-      id: message.id,
-      convoId: message.convoId,
-      role: "assistant",
-      content: message.content[0].text,
-      createdAt: message.createdAt
-    }
-    return parsedMsg
-  }
-  return null
-}
-
 wsApp.ws('/messages/:id/ws', (ws: WebSocket, req) => {
   const id = req.params.id as string;
   //later will check for id generally and have some checks on if the id even exists in history object
-
   if (!wsMap.has(id)) {
     wsMap.set(id, new Set())
   }
@@ -116,17 +86,17 @@ wsApp.ws('/messages/:id/ws', (ws: WebSocket, req) => {
 
   if (currentMessages) {
     ws.send(JSON.stringify({
-      type: 'updateChat',
+      type: 'fullHistory',
       currentMessages
     }));
   }
 
   ws.on('close', () => {
-    const connections = wsMap.get('1')
+    const connections = wsMap.get(id)
     if (connections) {
       connections.delete(ws)
       if (connections.size === 0) {
-        wsMap.delete('1')
+        wsMap.delete(id)
       }
     }
   })
@@ -149,12 +119,11 @@ app.post('/conversations', async (req: Request, res: Response) => {
   const newConvo = storage.createConversation({ content: content, userId: '1', save: save })
   storage.addMessage({ convoId: newConvo.id, content: content, role: "user" })
   const aiMsg = await getAIResponse(newConvo.id)
-  const aiMsgParsed = await getResponseParse(aiMsg);
 
-  console.log('parsed anthropic', aiMsgParsed)
+  console.log('parsed anthropic', aiMsg)
 
   const convoWithRes = storage.getConversation({convoId: newConvo.id})
-  sendNewMessage('1', aiMsg)
+  sendNewMessage(newConvo.id, aiMsg)
   res.json(convoWithRes)
 })
 
@@ -169,22 +138,26 @@ app.get('/messages/:id', async (req: Request, res: Response) => {
 app.post('/messages/:id', async (req: Request, res: Response) => {
 
   const id = req.params.id as string
+  console.log('messages id', id)
 
   const body = req.body
+  console.log('request body', body)
 
   const post = storage.addMessage({ convoId: id, role: body.role, content: body.content })
 
+  console.log('post', post)
   //refactor client handling so they just append new message into history state
-  sendNewMessage('1', post)
+  sendNewMessage(id, post)
 
+  //getAIResponse performs the addMessage post inside
   const aiMsg = await getAIResponse(id)
 
-  const aiMsgParsed = getResponseParse(aiMsg);
+  console.log('parsed anthropic', aiMsg)
 
-  console.log('parsed anthropic', aiMsgParsed)
-  sendNewMessage('1', aiMsg)
+  sendNewMessage(id, aiMsg)
 
-  res.json(aiMsg.content)
+  //not firing
+  return res.status(200).json({message: "newMessage sent"})
 })
 
 const PORT = 3000

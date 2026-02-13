@@ -18,18 +18,21 @@ const ConvoList = ({ selectConvo }: { selectConvo: (id: string) => void }) => {
   }, []);
 
   return (
-    <div>
+    <div className="h-full">
       {convos !== null ? (
-        <div>
-          <ScrollArea>
-            {convos.map((el) => (
-              <ConvoTitle
-                key={el.id}
-                title={el.title}
-                id={el.id}
-                selectConvo={selectConvo}
-              />
-            ))}
+        <div className="flex flex-col h-full">
+          <h4>Conversations</h4>
+          <ScrollArea className="flex-1 overflow-hidden">
+            <div className="flex flex-col">
+              {convos.map((el) => (
+                <ConvoTitle
+                  key={el.id}
+                  title={el.title}
+                  id={el.id}
+                  selectConvo={selectConvo}
+                />
+              ))}
+            </div>
           </ScrollArea>
         </div>
       ) : (
