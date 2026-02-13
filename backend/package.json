@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
+    "@supabase/supabase-js": "^2.95.3",
     "@types/cors": "^2.8.19",
     "@types/express-ws": "^3.0.6",
     "cors": "^2.8.6",

@@ -27,9 +27,4 @@ const resetMessages = async () => {
   return response.data
 }
 
-//add later if time
-const deleteMessage = async (convoId: string) => {
-
-}
-
 export default {getMessages, sendMessage, resetMessages, getConvos, createConvo}
