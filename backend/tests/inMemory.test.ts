@@ -65,7 +65,7 @@ describe('message work', () => {
     const Convos = await storage.getConversations({ userId: '12' })
     const realConvo = Convos[0] as Conversation
     const mockId = realConvo.id
-    const messages = await storage.getConversation({ convoId: mockId })
+    const messages = await storage.getMessages({ convoId: mockId })
     expect(messages).toHaveLength(2)
     expect(messages[0]).toMatchObject(messageExample)
     expect(messages[0]).toHaveProperty('id');

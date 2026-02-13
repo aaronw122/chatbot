@@ -2,7 +2,7 @@ import { Card } from "../components/ui/card";
 import type { ChatProps } from "../../../types/types";
 
 const Chat = ({ role, content }: ChatProps) => {
-  //fix stylingn so its right aligned vs left aligned, etc.
+  //fix styling so its right aligned vs left aligned, etc.
 
   //should be doing this modification on the backend in express, only send through content string
 
