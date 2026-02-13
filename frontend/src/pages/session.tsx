@@ -9,7 +9,7 @@ import { useConvo } from "@/context/convoContext";
 const Session = () => {
   const [socketConnect, setSocketConnect] = useState<true | false>(false);
   const webSocket = useRef<WebSocket | null>(null);
-  const [history, setHistory] = useState<CleanMessage[] | []>([]);
+  const [chatHistory, setChatHistory] = useState<CleanMessage[] | []>([]);
 
   const convo = useConvo();
 
@@ -44,9 +44,9 @@ const Session = () => {
           console.log("event data", event.data);
           if (data.type === "updateChat") {
             console.log("data.history", data.message);
-            setHistory((prev) => [...prev, data.message]);
+            setChatHistory((prev) => [...prev, data.message]);
           } else if (data.type === "fullHistory") {
-            setHistory(data.currentMessages);
+            setChatHistory(data.currentMessages);
           }
         } catch (error) {
           console.error("failed to parse message", error);
@@ -90,7 +90,7 @@ const Session = () => {
       <NewChat />
       {socketConnect ? <p> connected </p> : <p> disconnected </p>}
       <div className="flex-1 overflow-y-auto">
-        <Chats history={history} />
+        <Chats history={chatHistory} />
       </div>
       <Input
         sendMessage={sendMessage}

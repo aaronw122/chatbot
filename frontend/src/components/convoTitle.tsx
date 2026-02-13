@@ -6,7 +6,7 @@ const ConvoTitle = ({ id, title }: { id: string; title: string }) => {
   return (
     <Button
       variant="ghost"
-      className="pl-0"
+      className="pl-0 justify-start ml-2"
       onClick={() => navigate(`/chat/${id}`)}
     >
       {" "}

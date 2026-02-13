@@ -3,6 +3,12 @@ import { type Conversation } from "../../../types/types";
 import services from "../services/index";
 import ConvoTitle from "./convoTitle";
 import { ScrollArea } from "./ui/scroll-area";
+import {
+  Sidebar,
+  SidebarHeader,
+  SidebarContent,
+  useSidebar,
+} from "./ui/sidebar";
 // import { useConvo } from "@/context/convoContext";
 
 //state: conversations in array format, mapped using the id as key
@@ -14,6 +20,15 @@ import { ScrollArea } from "./ui/scroll-area";
 const ConvoList = () => {
   const [convos, setConvos] = useState<null | Conversation[]>(null);
 
+  const {
+    state,
+    open,
+    setOpen,
+    openMobile,
+    setOpenMobile,
+    isMobile,
+    toggleSidebar,
+  } = useSidebar();
   // const convo = useConvo();
 
   // if (!convo) throw new Error("useConvo not working");
@@ -28,17 +43,24 @@ const ConvoList = () => {
     <div className="h-full">
       {convos !== null ? (
         <div className="flex flex-col h-full">
-          <h4>Conversations</h4>
-          <ScrollArea className="flex-1 overflow-hidden">
-            <div className="flex flex-col">
-              {convos.map((el) => (
-                <ConvoTitle key={el.id} title={el.title} id={el.id} />
-              ))}
-            </div>
-          </ScrollArea>
+          <Sidebar collapsible="icon">
+            <SidebarHeader>
+              <div>
+                <h4>Conversations</h4>
+                <button onClick={() => toggleSidebar} />
+              </div>
+            </SidebarHeader>
+            <SidebarContent>
+              <div className="flex flex-col">
+                {convos.map((el) => (
+                  <ConvoTitle key={el.id} title={el.title} id={el.id} />
+                ))}
+              </div>
+            </SidebarContent>
+          </Sidebar>
         </div>
       ) : (
-        <p> loading </p>
+        <p> loading... </p>
       )}
     </div>
   );
