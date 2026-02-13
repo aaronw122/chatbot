@@ -14,7 +14,7 @@ const ConvoList = ({ selectConvo }: { selectConvo: (id: string) => void }) => {
   const [convos, setConvos] = useState<null | Conversation[]>(null);
 
   useEffect(() => {
-    services.getConvos().then((r) => setConvos(r));
+    services.getConversations().then((r) => setConvos(r));
   }, []);
 
   return (

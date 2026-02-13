@@ -2,14 +2,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Send } from "lucide-react";
 
-type inputType = {
+type InputProps = {
   id: string;
   sendMessage: (id: string) => void;
   handleMsgChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   newMessage: string;
 };
 
-const Input = ({ id, sendMessage, newMessage, handleMsgChange }: inputType) => {
+const Input = ({
+  id,
+  sendMessage,
+  newMessage,
+  handleMsgChange,
+}: InputProps) => {
   return (
     <div className="flex items-center gap-2">
       <Textarea

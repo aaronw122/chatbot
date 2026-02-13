@@ -31,9 +31,9 @@ function App() {
     });
   };
 
-  const createConvo = async () => {
+  const createConversation = async () => {
     console.log("message sent", newMessage);
-    const res = await services.createConvo({
+    const res = await services.createConversation({
       content: newMessage,
     });
     setConvoId(res.convoId);
@@ -57,7 +57,7 @@ function App() {
               bubble{" "}
             </h1>
             <HomeInput
-              createConvo={createConvo}
+              createConversation={createConversation}
               newMessage={newMessage}
               handleMsgChange={handleMsgChange}
             />
