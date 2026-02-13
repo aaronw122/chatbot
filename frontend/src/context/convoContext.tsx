@@ -1,6 +1,7 @@
 import { useContext, createContext, useState } from "react";
 import services from "../services/index";
 import type { convoContext } from "../../../types/types";
+import { Link } from "react-router";
 
 //creating context object
 const ConvoContext = createContext<convoContext | null>(null);
@@ -16,10 +17,9 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
   const [convoId, setConvoId] = useState<string>("");
   const [newMessage, setNewMessage] = useState("");
 
-  const selectConvo = (id: string) => {
-    setConvoId(id);
-    setCurrentView("chat");
-  };
+  // const selectConvo = (id: string) => {
+  //   setConvoId(id);
+  // };
 
   const handleMsgChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     setNewMessage(event.target.value);
@@ -61,7 +61,6 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
         setConvoId,
         newMessage,
         setNewMessage,
-        selectConvo,
         handleMsgChange,
         sendMessage,
         createConversation,
