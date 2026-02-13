@@ -1,18 +1,15 @@
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Send } from "lucide-react";
+import { useConvo } from "@/context/convoContext";
 
-type HomeInputProps = {
-  createConversation: () => void;
-  handleMsgChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
-  newMessage: string;
-};
+const HomeInput = () => {
+  const convo = useConvo();
 
-const HomeInput = ({
-  createConversation,
-  newMessage,
-  handleMsgChange,
-}: HomeInputProps) => {
+  if (!convo) throw new Error("useConvo not working");
+
+  const { createConversation, newMessage, handleMsgChange } = convo;
+
   return (
     <div className="flex items-center gap-2">
       <Textarea
