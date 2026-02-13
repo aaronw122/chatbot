@@ -4,13 +4,17 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
 import Session from "./components/session.tsx";
+import ConvoList from "./components/convoList.tsx";
 import { ConvoProvider } from "./context/convoContext.tsx";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ConvoProvider>
       <BrowserRouter>
-        <div className="h-screen">
+        <div className="h-screen flex flex-row">
+          <div className="w-fit m-10">
+            <ConvoList />
+          </div>
           <Routes>
             <Route path="/" element={<App />} />
             <Route path="/chat/:id" element={<Session />} />
