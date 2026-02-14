@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import Chats from "../components/messageHistory";
+import MessageHistory from "../components/messageHistory";
 import Input from "../components/input";
+import MiniWindow from "../components/miniWindow";
 import type { WebSocketMessage, CleanMessage } from "../../../types/types";
 import { useParams } from "react-router";
 import { useConvo } from "@/context/convoContext";
@@ -87,7 +88,7 @@ const Session = () => {
   return (
     <div className="flex flex-col h-full pb-5 mx-auto w-full max-w-3xl px-4">
       <div className="flex-1 overflow-y-auto my-15">
-        <Chats history={chatHistory} />
+        <MessageHistory history={chatHistory} />
       </div>
       <Input
         sendMessage={sendMessage}
@@ -95,6 +96,7 @@ const Session = () => {
         handleMsgChange={handleMsgChange}
         id={id!}
       />
+      <MiniWindow />
     </div>
   );
 };
