@@ -34,7 +34,7 @@ const ConvoList = () => {
     if (session) {
       services.getConversations().then((r) => setConvos(r));
     }
-  }, []);
+  }, [session, setConvos]);
 
   return (
     <div className="h-full">
@@ -42,7 +42,7 @@ const ConvoList = () => {
         <Sidebar collapsible="icon">
           <SidebarHeader>
             <div className="flex flex-col gap-2">
-              <h4>Forkleft</h4>
+              <h4>EasyBranch</h4>
               <NewChat />
             </div>
           </SidebarHeader>

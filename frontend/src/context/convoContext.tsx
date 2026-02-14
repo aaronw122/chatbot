@@ -21,6 +21,13 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
     null,
   );
   const [convos, setConvos] = useState<null | Conversation[]>(null);
+  const [miniMessage, setMiniMessage] = useState<null | string>(null);
+  const [miniChatHistory, setMiniChatHistory] = useState<null | CleanMessage[]>(
+    null,
+  );
+  const [miniOpen, setMiniOpen] = useState<true | false>(false);
+  const [selectedText, setSelectedText] = useState<string | null>(null);
+  const [miniConvoId, setMiniConvoId] = useState<string | null>(null);
 
   const handleMsgChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     setNewMessage(event.target.value);
@@ -48,6 +55,16 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
         setOptimisticMsg,
         convos,
         setConvos,
+        miniMessage,
+        setMiniMessage,
+        miniChatHistory,
+        setMiniChatHistory,
+        miniOpen,
+        setMiniOpen,
+        selectedText,
+        setSelectedText,
+        miniConvoId,
+        setMiniConvoId,
       }}
     >
       {children}
