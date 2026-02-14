@@ -4,7 +4,7 @@ import { Send } from "lucide-react";
 import { useConvo } from "@/context/convoContext";
 import { useNavigate } from "react-router";
 import services from "../services/index";
-import Chats from "./chats";
+import Chats from "./messageHistory";
 
 const HomeInput = () => {
   const convo = useConvo();
@@ -18,6 +18,7 @@ const HomeInput = () => {
     handleMsgChange,
     setOptimisticMsg,
     optimisticMsg,
+    setConvos,
   } = convo;
 
   const createConversation = async () => {
@@ -38,6 +39,8 @@ const HomeInput = () => {
     console.log("optimistic", optimisticMessage);
     navigate(`/chat/${res[0].convoId}`);
     setNewMessage("");
+    const updatedConvos = await services.getConversations();
+    setConvos(updatedConvos);
   };
 
   return (

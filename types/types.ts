@@ -5,6 +5,8 @@ import type ChangeEvent from 'react'
 export type WSmap = Map<string, Set<WebSocket>>
 
 
+export type VoidFunc = (event: React.ChangeEvent<HTMLInputElement>) => void
+
 export type Message =
   Anthropic.MessageParam &
   { id: string, convoId: string, createdAt: string }
@@ -41,7 +43,7 @@ export interface CleanMessage {
   createdAt: string
 }
 
-export interface ChatProps {
+export interface MessageProps {
   //optional, only need for bubble
   id?: string,
   content: string,
@@ -64,8 +66,10 @@ export type SessionType = {
 export type convoContext = {
   newMessage: string,
   setNewMessage: React.Dispatch<React.SetStateAction<string>>,
-  optimisticMsg: CleanMessage[],
+  optimisticMsg: CleanMessage[] | null,
   setOptimisticMsg: React.Dispatch<React.SetStateAction<CleanMessage[] | null>>,
   handleMsgChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void,
-  sendMessage: (id: string) => void
+  sendMessage: (id: string) => void,
+  convos: Conversation[] | null,
+  setConvos: React.Dispatch<React.SetStateAction<null | Conversation[]>>,
 }
