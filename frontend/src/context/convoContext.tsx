@@ -1,6 +1,10 @@
 import { useContext, createContext, useState } from "react";
 import services from "../services/index";
-import type { CleanMessage, convoContext } from "../../../types/types";
+import type {
+  CleanMessage,
+  convoContext,
+  Conversation,
+} from "../../../types/types";
 
 //creating context object
 const ConvoContext = createContext<convoContext | null>(null);
@@ -13,7 +17,10 @@ export function useConvo() {
 //any children we nest inside the useContext will receive all these variables
 export function ConvoProvider({ children }: { children: React.ReactNode }) {
   const [newMessage, setNewMessage] = useState("");
-  const [optimisticMsg, setOptimisticMsg] = useState<CleanMessage | null>(null);
+  const [optimisticMsg, setOptimisticMsg] = useState<CleanMessage[] | null>(
+    null,
+  );
+  const [convos, setConvos] = useState<null | Conversation[]>(null);
 
   const handleMsgChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     setNewMessage(event.target.value);
@@ -39,6 +46,8 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
         sendMessage,
         optimisticMsg,
         setOptimisticMsg,
+        convos,
+        setConvos,
       }}
     >
       {children}

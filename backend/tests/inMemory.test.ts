@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "bun:test";
-import { InMemoryStorage } from "../storage";
+import { InMemoryStorage } from "../db/storage";
 import { expectedUserConvos, messageExample } from '../utils/testHelper'
 import type { Conversation, Message } from "../../types/types";
 

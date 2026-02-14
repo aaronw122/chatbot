@@ -1,5 +1,5 @@
 import { createRenderResumeDataCache } from 'next/dist/server/resume-data-cache/resume-data-cache'
-import type { Message, Messages, Conversation, CreateConversation, MessageType, Content, CleanMessage} from '../types/types'
+import type { Message, Messages, Conversation, CreateConversation, MessageType, Content, CleanMessage} from '../../types/types'
 import { supabaseAdmin } from './supabaseClient'
 
 
@@ -223,6 +223,7 @@ export class SupabaseStorage implements Storage {
       .from('conversations')
       .select()
       .eq('user_id', userId)
+      .order('created_at', { ascending: false })
 
     if (error) throw error
 
