@@ -11,7 +11,10 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
+    "@floating-ui/dom": "^1.7.5",
+    "@floating-ui/react": "^0.27.17",
     "@radix-ui/react-dialog": "^1.1.15",
+    "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.18",
     "axios": "^1.13.5",
     "better-auth": "^1.4.18",
@@ -22,6 +25,7 @@
     "radix-ui": "^1.4.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-markdown": "^10.1.0",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18",
     "vaul": "^1.1.2"

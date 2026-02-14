@@ -7,11 +7,12 @@ const NewChat = () => {
   const navigate = useNavigate();
 
   const openHome = () => {
+    console.log("click event working");
     navigate("/");
   };
 
   return (
-    <Button variant="outline" onClick={() => openHome}>
+    <Button variant="outline" onClick={() => openHome()}>
       new conversation
       <Plus />
     </Button>

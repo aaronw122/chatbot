@@ -61,7 +61,7 @@ const getAIResponse = async (convoId: string) => {
     const params: Anthropic.MessageCreateParams = {
       max_tokens: 1000,
       messages: updatedMessages.map(({ id, convoId, createdAt, ...rest }) => rest),
-      model: 'claude-haiku-4-5-20251001'
+      model: 'claude-sonnet-4-5-20250929'
     }
     const message = await client.messages.create(params)
     return await storage.addMessage({ convoId, role: message.role, content: message.content })
@@ -196,7 +196,7 @@ app.post('/messages/:id', async (req: Request, res: Response) => {
     sendNewMessage(id, aiMsg)
 
     //not firing
-    return res.status(200).json({message: "newMessage sent"})
+    res.json(aiMsg)
   }
   catch (error) {
       console.error('failed to send message', error)
