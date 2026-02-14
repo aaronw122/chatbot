@@ -44,7 +44,7 @@ const HomeInput = () => {
   };
 
   return (
-    <div>
+    <div className="w-full">
       {optimisticMsg ? (
         <Chats history={optimisticMsg} />
       ) : (
