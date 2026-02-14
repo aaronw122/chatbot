@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { authClient } from "@/lib/auth-client";
 import { type Conversation } from "../../../types/types";
 import services from "../services/index";
 import ConvoTitle from "./convoTitle";
@@ -8,9 +9,11 @@ import {
   SidebarHeader,
   SidebarContent,
   useSidebar,
+  SidebarFooter,
 } from "./ui/sidebar";
 
 import { useConvo } from "@/context/convoContext";
+import { Profile } from "./profile";
 
 //state: conversations in array format, mapped using the id as key
 // onClick, take them to a given session depending on convoId
@@ -25,23 +28,12 @@ const ConvoList = () => {
 
   const { convos, setConvos } = convo;
 
-  const {
-    state,
-    open,
-    setOpen,
-    openMobile,
-    setOpenMobile,
-    isMobile,
-    toggleSidebar,
-  } = useSidebar();
-  // const convo = useConvo();
-
-  // if (!convo) throw new Error("useConvo not working");
-
-  // const { selectConvo } = convo;
+  const { data: session } = authClient.useSession();
 
   useEffect(() => {
-    services.getConversations().then((r) => setConvos(r));
+    if (session) {
+      services.getConversations().then((r) => setConvos(r));
+    }
   }, []);
 
   return (
@@ -49,10 +41,9 @@ const ConvoList = () => {
       <div className="flex flex-col h-full">
         <Sidebar collapsible="icon">
           <SidebarHeader>
-            <div className="m:0">
-              <h4>Conversations</h4>
+            <div className="flex flex-col gap-2">
+              <h4>Forkleft</h4>
               <NewChat />
-              <button onClick={() => toggleSidebar} />
             </div>
           </SidebarHeader>
           <SidebarContent>
@@ -70,6 +61,9 @@ const ConvoList = () => {
               <p> loading... </p>
             )}
           </SidebarContent>
+          <SidebarFooter>
+            <Profile />
+          </SidebarFooter>
         </Sidebar>
       </div>
     </div>

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Chats from "../components/messageHistory";
 import Input from "../components/input";
-import NewChat from "../components/newChat";
 import type { WebSocketMessage, CleanMessage } from "../../../types/types";
 import { useParams } from "react-router";
 import { useConvo } from "@/context/convoContext";
@@ -87,7 +86,7 @@ const Session = () => {
   //will have new deps in future,
   return (
     <div className="flex flex-col h-full pb-5 mx-auto w-full max-w-3xl px-4">
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto my-15">
         <Chats history={chatHistory} />
       </div>
       <Input
