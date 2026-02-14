@@ -1,14 +1,22 @@
 import 'dotenv/config';
 import express, { type Request, type Response } from 'express';
+import { toNodeHandler, fromNodeHeaders } from "better-auth/node"
+
+import { auth } from "./utils/auth"
 import Anthropic from '@anthropic-ai/sdk'
 import type{WSmap, Message, CleanMessage} from '../types/types'
 import expressWs, { type Application } from 'express-ws';
 import cors from 'cors';
 import type { WebSocket } from 'ws';
-import { InMemoryStorage, SupabaseStorage, type Storage } from './storage';
+import { InMemoryStorage, SupabaseStorage, type Storage } from './db/storage';
 const app = express()
 
 app.use(express.json())
+
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true
+}))
 
 const UUIDplaceholder = "00000000-0000-0000-0000-000000000001"
 
@@ -19,20 +27,7 @@ const wsApp = app as unknown as Application;
 const storage: Storage = process.env.USE_SUPABASE === 'true' ? new SupabaseStorage()
   : new InMemoryStorage()
 
-app.use(cors({ origin: 'http://localhost:5173' }))
-
-type ClaudeResponse = {
-  id: string,
-  type: "message" | "image",
-  role: "assistant" | "user",
-  content: { type: "text"; text: string }[],
-  stop_reason: "end_turn" | "max_tokens" | "tool_use" | null;
-  stop_sequence: string | null,
-  usage?: {
-    input_tokens: number,
-    output_tokens: number
-  },
-}
+app.all("/api/auth/{*any}", toNodeHandler(auth))
 
 const wsMap: WSmap = new Map<string, Set<WebSocket>>
 
@@ -117,8 +112,17 @@ wsApp.ws('/messages/:id/ws', async (ws: WebSocket, req) => {
 
 app.get('/conversations', async (req: Request, res: Response) => {
   try {
-    const convos = await storage.getConversations({ userId: UUIDplaceholder })
-    console.log('convos list', convos)
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers)
+    })
+
+    console.log('session', session)
+
+    if (!session) {
+      return res.status(404).json({error: "unauthorized"})
+    }
+
+    const convos = await storage.getConversations({ userId: session.user.id })
     res.json(convos)
   }
   catch (error) {
@@ -129,9 +133,17 @@ app.get('/conversations', async (req: Request, res: Response) => {
 
 app.post('/conversations', async (req: Request, res: Response) => {
   try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers)
+    })
+
+    if (!session) {
+      return res.status(404).json({error: "unauthorized"})
+    }
+
     const { content, save } = req.body
     //for now hardcoding userId
-    const newConvo = await storage.createConversation({ content: content, userId: UUIDplaceholder, save: save })
+    const newConvo = await storage.createConversation({ content: content, userId: session.user.id, save: save })
     const userMsg = await storage.addMessage({ convoId: newConvo.id, content: content, role: "user" })
 
     const aiMsg = await getAIResponse(newConvo.id)

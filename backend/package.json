@@ -6,6 +6,7 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/express": "^5.0.6",
+    "@types/pg": "^8.16.0",
     "@types/supertest": "^6.0.3",
     "@types/ws": "^8.18.1"
   },
@@ -22,9 +23,11 @@
     "@supabase/supabase-js": "^2.95.3",
     "@types/cors": "^2.8.19",
     "@types/express-ws": "^3.0.6",
+    "better-auth": "^1.4.18",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "express-ws": "^5.0.2",
+    "pg": "^8.18.0",
     "supertest": "^7.2.2",
     "ws": "^8.19.0"
   }

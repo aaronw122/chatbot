@@ -2,6 +2,8 @@ import axios from 'axios'
 
 const baseURL = 'http://localhost:3000'
 
+axios.defaults.withCredentials = true;
+
 const getConversations = async () => {
   const response = await axios.get(`${baseURL}/conversations`)
   return response.data

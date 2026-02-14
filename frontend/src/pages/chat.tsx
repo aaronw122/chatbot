@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import Chats from "../components/chats";
+import Chats from "../components/messageHistory";
 import Input from "../components/input";
 import NewChat from "../components/newChat";
 import type { WebSocketMessage, CleanMessage } from "../../../types/types";
@@ -86,9 +86,7 @@ const Session = () => {
 
   //will have new deps in future,
   return (
-    <div className="flex flex-col h-full pb-5 lg:mx-50 md:mx-20 lg:pb-20">
-      <NewChat />
-      {socketConnect ? <p> connected </p> : <p> disconnected </p>}
+    <div className="flex flex-col h-full pb-5 mx-auto w-full max-w-3xl px-4">
       <div className="flex-1 overflow-y-auto">
         <Chats history={chatHistory} />
       </div>
