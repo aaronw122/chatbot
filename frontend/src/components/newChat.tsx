@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 
-import { Pencil } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useNavigate } from "react-router";
 
 const NewChat = () => {
@@ -11,8 +11,9 @@ const NewChat = () => {
   };
 
   return (
-    <Button className="ml-auto" variant="outline" onClick={() => openHome()}>
-      <Pencil />
+    <Button variant="outline" onClick={() => openHome}>
+      new conversation
+      <Plus />
     </Button>
   );
 };

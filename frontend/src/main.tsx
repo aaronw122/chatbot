@@ -4,7 +4,6 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
 import Session from "./pages/chat.tsx";
-import { Profile } from "./components/profile.tsx";
 import ConvoList from "./components/convoList.tsx";
 import { ConvoProvider } from "./context/convoContext.tsx";
 import { SidebarProvider } from "./components/ui/sidebar.tsx";
@@ -25,7 +24,6 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/signup" element={<SignUp />} />
             </Routes>
           </div>
-          <Profile />
         </SidebarProvider>
       </BrowserRouter>
     </ConvoProvider>
