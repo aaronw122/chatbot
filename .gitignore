@@ -1,2 +1,22 @@
+node_modules/
+dist/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+
+# SSH keys
+*.pem
+
+# Environment
+.env
+.env.*
+
+# OS
+.DS_Store
+
+# Design docs
 sqlite-design.md
 supabase-migration-plan.md
