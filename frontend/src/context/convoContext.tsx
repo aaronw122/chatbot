@@ -1,5 +1,4 @@
 import { useContext, createContext, useState } from "react";
-import services from "../services/index";
 import type {
   CleanMessage,
   convoContext,
@@ -16,55 +15,48 @@ export function useConvo() {
 
 //any children we nest inside the useContext will receive all these variables
 export function ConvoProvider({ children }: { children: React.ReactNode }) {
-  const [newMessage, setNewMessage] = useState("");
-  const [optimisticMsg, setOptimisticMsg] = useState<CleanMessage[] | null>(
-    null,
-  );
+  //home page
   const [convos, setConvos] = useState<null | Conversation[]>(null);
-  const [miniMessage, setMiniMessage] = useState<null | string>(null);
-  const [miniChatHistory, setMiniChatHistory] = useState<null | CleanMessage[]>(
-    null,
-  );
-  const [miniOpen, setMiniOpen] = useState<true | false>(false);
-  const [selectedText, setSelectedText] = useState<string | null>(null);
-  const [miniConvoId, setMiniConvoId] = useState<string | null>(null);
 
-  const handleMsgChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setNewMessage(event.target.value);
-    console.log(event.target.value);
-  };
+  //normal chat + home
+  // const [newMessage, setNewMessage] = useState("");
+  // const [optimisticMsg, setOptimisticMsg] = useState<CleanMessage[] | null>(
+  //   null,
+  // );
+  const [chatHistory, setChatHistory] = useState<CleanMessage[] | null>(null);
 
-  const sendMessage = async (id: string) => {
-    console.log("message sent", newMessage);
-    setNewMessage("");
-    await services.sendMessage({
-      content: newMessage,
-      role: "user",
-      convoId: id,
-    });
-  };
+  //miniChat - clean up later
+  // const [miniMessage, setMiniMessage] = useState<null | string>(null);
+  // const [miniChatHistory, setMiniChatHistory] = useState<null | CleanMessage[]>(
+  //   null,
+  // );
+  // const [miniOpen, setMiniOpen] = useState<true | false>(false);
+  // const [selectedText, setSelectedText] = useState<string | null>(null);
+  // const [convoMsg, setConvoMsg] = useState<string | null>(null);
+  // const [miniConvoId, setMiniConvoId] = useState<string | null>(null);
+
+  // const handleMsgChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+  //   setNewMessage(event.target.value);
+  //   console.log(event.target.value);
+  // };
+
+  // const sendMessage = async (id: string) => {
+  //   console.log("message sent", newMessage);
+  //   setNewMessage("");
+  //   await services.sendMessage({
+  //     content: newMessage,
+  //     role: "user",
+  //     convoId: id,
+  //   });
+  // };
 
   return (
     <ConvoContext.Provider
       value={{
-        newMessage,
-        setNewMessage,
-        handleMsgChange,
-        sendMessage,
-        optimisticMsg,
-        setOptimisticMsg,
         convos,
         setConvos,
-        miniMessage,
-        setMiniMessage,
-        miniChatHistory,
-        setMiniChatHistory,
-        miniOpen,
-        setMiniOpen,
-        selectedText,
-        setSelectedText,
-        miniConvoId,
-        setMiniConvoId,
+        chatHistory,
+        setChatHistory,
       }}
     >
       {children}

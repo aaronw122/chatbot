@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import express, { type Request, type Response } from 'express';
 import { toNodeHandler, fromNodeHeaders } from "better-auth/node"
 
@@ -7,11 +6,13 @@ import Anthropic from '@anthropic-ai/sdk'
 import type{WSmap, Message, CleanMessage} from '../types/types'
 import expressWs, { type Application } from 'express-ws';
 import cors from 'cors';
+import path from 'path';
 import type { WebSocket } from 'ws';
 import { InMemoryStorage, SupabaseStorage, type Storage } from './db/storage';
 const app = express()
 
 app.use(express.json())
+app.use(express.static(path.join(import.meta.dirname, 'dist')))
 
 app.use(cors({
   origin: 'http://localhost:5173',
@@ -20,40 +21,12 @@ app.use(cors({
 
 const UUIDplaceholder = "00000000-0000-0000-0000-000000000001"
 
-expressWs(app)
-
-const wsApp = app as unknown as Application;
-
 const storage: Storage = process.env.USE_SUPABASE === 'true' ? new SupabaseStorage()
   : new InMemoryStorage()
 
 app.all("/api/auth/{*any}", toNodeHandler(auth))
 
-const wsMap: WSmap = new Map<string, Set<WebSocket>>
-
 //pass through whole new array each Req
-
-//right now its simpler, so i will pass through a mock string, but likely will want enabled for multiple chats nayways
-const sendNewMessage = (id: string, message: CleanMessage) => {
-  //send id of 1 thru the post request
-  const connections = wsMap.get(id)
-
-  console.log('updating chat, connections:', connections)
-
-  if (connections) {
-    connections.forEach(ws => {
-      console.log('ready state?', ws.readyState)
-
-      if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({
-          type: 'updateChat',
-          message
-        }))
-        console.log('ws send event may dupe', message)
-      }
-    });
-  }
-}
 
 const getAIResponse = async (convoId: string) => {
   const updatedMessages = await storage.getMessages({ convoId })
@@ -66,49 +39,6 @@ const getAIResponse = async (convoId: string) => {
     const message = await client.messages.create(params)
     return await storage.addMessage({ convoId, role: message.role, content: message.content })
 }
-
-wsApp.ws('/messages/:id/ws', async (ws: WebSocket, req) => {
-  try {
-    const id = req.params.id as string;
-    //later will check for id generally and have some checks on if the id even exists in history object
-    if (!wsMap.has(id)) {
-      wsMap.set(id, new Set())
-    }
-
-    wsMap.get(id)!.add(ws);
-
-    console.log('wsMAP', wsMap)
-
-    //once we refactor, fetch exact sessionId history, then check if exists + send.
-
-    const currentMessages = await storage.getMessages({convoId: id})
-
-    if (currentMessages) {
-      ws.send(JSON.stringify({
-        type: 'fullHistory',
-        currentMessages
-      }));
-    }
-
-    ws.on('close', () => {
-      const connections = wsMap.get(id)
-      if (connections) {
-        connections.delete(ws)
-        if (connections.size === 0) {
-          wsMap.delete(id)
-        }
-      }
-    })
-    ws.on('error', (error) => {
-      console.error('websocket error:', error)
-    })
-  }
-
-  catch (error) {
-    console.log('websocket error', error)
-    ws.close()
-  }
-})
 
 app.get('/conversations', async (req: Request, res: Response) => {
   try {
@@ -159,6 +89,26 @@ app.post('/conversations', async (req: Request, res: Response) => {
   }
 })
 
+app.post('/miniConvo', async (req: Request, res: Response) => {
+  try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers)
+    })
+
+    if (!session) {
+      return res.status(404).json({ error: "unauthorized" })
+    }
+
+    const { content, save, role } = req.body
+
+    const newConvo = await storage.createConversation({ content: content, save: false, role: role })
+  }
+  catch(error) {
+    console.log('failed to create miniConvo', error)
+    res.status(500).json({error: "server error"})
+  }
+})
+
 app.get('/messages/:id', async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string
@@ -186,14 +136,11 @@ app.post('/messages/:id', async (req: Request, res: Response) => {
 
     console.log('post', post)
     //refactor client handling so they just append new message into history state
-    sendNewMessage(id, post)
 
     //getAIResponse performs the addMessage post inside
     const aiMsg = await getAIResponse(id)
 
     console.log('parsed anthropic', aiMsg)
-
-    sendNewMessage(id, aiMsg)
 
     //not firing
     res.json(aiMsg)
@@ -206,6 +153,6 @@ app.post('/messages/:id', async (req: Request, res: Response) => {
 
 const PORT = 3000
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`listening on port ${PORT}`)
 })

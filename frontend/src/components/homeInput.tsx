@@ -5,12 +5,18 @@ import { useConvo } from "@/context/convoContext";
 import { useNavigate } from "react-router";
 import services from "../services/index";
 import Chats from "./messageHistory";
+import { useMessage } from "@/context/messageContext";
 
 const HomeInput = () => {
   const convo = useConvo();
+  const message = useMessage();
   const navigate = useNavigate();
 
   if (!convo) throw new Error("useConvo not working");
+
+  const { setConvos } = convo;
+
+  if (!message) throw new Error("useMessage not working");
 
   const {
     newMessage,
@@ -18,8 +24,7 @@ const HomeInput = () => {
     handleMsgChange,
     setOptimisticMsg,
     optimisticMsg,
-    setConvos,
-  } = convo;
+  } = message;
 
   const createConversation = async () => {
     console.log("message sent", newMessage);

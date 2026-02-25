@@ -6,14 +6,18 @@ import App from "./App.tsx";
 import Session from "./pages/chat.tsx";
 import ConvoList from "./components/convoList.tsx";
 import { ConvoProvider } from "./context/convoContext.tsx";
+import { MessageProvider } from "./context/messageContext.tsx";
+import { MiniProvider } from "./context/miniContext.tsx";
 import { SidebarProvider } from "./components/ui/sidebar.tsx";
 import SignUp from "./pages/signUp.tsx";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ConvoProvider>
-      <BrowserRouter>
-        <SidebarProvider>
+      <MessageProvider>
+        <MiniProvider>
+          <BrowserRouter>
+          <SidebarProvider>
           <div className="w-fit m-10">
             <ConvoList />
           </div>
@@ -24,8 +28,10 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/signup" element={<SignUp />} />
             </Routes>
           </div>
-        </SidebarProvider>
-      </BrowserRouter>
+          </SidebarProvider>
+          </BrowserRouter>
+        </MiniProvider>
+      </MessageProvider>
     </ConvoProvider>
   </StrictMode>,
 );

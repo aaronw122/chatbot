@@ -2,21 +2,22 @@ import { useRef } from "react";
 import { Card } from "./ui/card";
 import type { MessageProps } from "../../../types/types";
 import { computePosition, offset, flip, shift } from "@floating-ui/dom";
-import { useConvo } from "@/context/convoContext";
 import Markdown from "react-markdown";
+import { useMini } from "@/context/miniContext";
 
 const Message = ({ role, content }: MessageProps) => {
   const replyRef = useRef<HTMLButtonElement>(null);
-  const convo = useConvo();
+  const mini = useMini();
   //fix styling so its right aligned vs left aligned, etc.
+
+  if (!mini) throw new Error('useMini didnt work')
+
   const show = (el: HTMLElement) => {
     el.style.display = "block";
   };
   const hide = (el: HTMLElement) => {
     el.style.display = "none";
   };
-
-  //should be doing this modification on the backend in express, only send through content string
 
   const mouseUpHandler = async () => {
     const replyButton = replyRef.current;
@@ -59,12 +60,12 @@ const Message = ({ role, content }: MessageProps) => {
         className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground shadow"
         onClick={() => {
           const text = window.getSelection()?.toString().trim();
-          if (text && convo) {
-            convo.setSelectedText(text);
-            convo.setMiniOpen(true);
-            convo.setMiniChatHistory(null);
-            convo.setMiniConvoId(null);
-            convo.setMiniMessage(null);
+          if (text && mini) {
+            mini.setSelectedText(text);
+            mini.setMiniOpen(true);
+            mini.setMiniChatHistory(null);
+            mini.setMiniConvoId(null);
+            mini.setMiniMessage(null);
           }
           window.getSelection()?.removeAllRanges();
           hide(replyRef.current!);
