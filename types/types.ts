@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 import Anthropic from '@anthropic-ai/sdk'
-import type ChangeEvent from 'react'
+
 
 export type WSmap = Map<string, Set<WebSocket>>
 
@@ -64,14 +64,22 @@ export type SessionType = {
 }
 
 export type convoContext = {
+  convos: Conversation[] | null,
+  setConvos: React.Dispatch<React.SetStateAction<null | Conversation[]>>,
+  chatHistory: CleanMessage[] | null,
+  setChatHistory: React.Dispatch<React.SetStateAction<CleanMessage[] | null>>,
+}
+
+export type messageContext = {
   newMessage: string,
   setNewMessage: React.Dispatch<React.SetStateAction<string>>,
   optimisticMsg: CleanMessage[] | null,
   setOptimisticMsg: React.Dispatch<React.SetStateAction<CleanMessage[] | null>>,
   handleMsgChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void,
   sendMessage: (id: string) => void,
-  convos: Conversation[] | null,
-  setConvos: React.Dispatch<React.SetStateAction<null | Conversation[]>>,
+}
+
+export type miniContext = {
   miniMessage: string | null,
   setMiniMessage: React.Dispatch<React.SetStateAction<string | null>>,
   miniChatHistory: CleanMessage[] | null,

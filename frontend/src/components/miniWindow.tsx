@@ -1,79 +1,29 @@
-import { useEffect, useRef, useCallback } from "react";
-import { useConvo } from "@/context/convoContext";
+import { useEffect } from "react";
 import MiniMessageHistory from "./miniChats";
 import MiniInput from "./miniInput";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
-import type { WebSocketMessage } from "../../../types/types";
+import { useMini } from "@/context/miniContext";
 
 const MiniWindow = () => {
-  const convo = useConvo();
-  const webSocket = useRef<WebSocket | null>(null);
+  const mini = useMini();
 
-  if (!convo) return null;
+  if (!mini) return null;
 
   const {
     miniOpen,
     setMiniOpen,
     miniChatHistory,
     setMiniChatHistory,
-    miniConvoId,
     selectedText,
     setSelectedText,
     setMiniConvoId,
     setMiniMessage,
-  } = convo;
-
-  const wsConnect = useCallback(
-    function connect() {
-      if (!miniConvoId) return;
-
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(
-        `${protocol}//localhost:3000/messages/${miniConvoId}/ws`,
-      );
-
-      webSocket.current = ws;
-
-      ws.onmessage = (event) => {
-        try {
-          const data: WebSocketMessage = JSON.parse(event.data);
-          if (data.type === "updateChat") {
-            setMiniChatHistory((prev) =>
-              prev ? [...prev, data.message] : [data.message],
-            );
-          } else if (data.type === "fullHistory") {
-            setMiniChatHistory(data.currentMessages);
-          }
-        } catch (error) {
-          console.error("mini ws parse error", error);
-        }
-      };
-
-      ws.onclose = (event) => {
-        if (event.code !== 1000 && webSocket.current === ws) {
-          setTimeout(connect, 4000);
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error("mini ws error:", error);
-      };
-    },
-    [miniConvoId, setMiniChatHistory],
-  );
+  } = mini;
 
   useEffect(() => {
-    if (!miniConvoId) return;
-
-    wsConnect();
-
-    return () => {
-      const ws = webSocket.current;
-      webSocket.current = null;
-      if (ws) ws.close();
-    };
-  }, [wsConnect, miniConvoId]);
+    setMiniChatHistory(null);
+  }, []);
 
   const handleClose = () => {
     setMiniOpen(false);
@@ -81,9 +31,7 @@ const MiniWindow = () => {
     setSelectedText(null);
     setMiniConvoId(null);
     setMiniMessage(null);
-    const ws = webSocket.current;
-    webSocket.current = null;
-    if (ws) ws.close();
+    //later also add operation to delete from db
   };
 
   if (!miniOpen) return null;

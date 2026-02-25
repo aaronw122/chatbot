@@ -1,12 +1,12 @@
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Send } from "lucide-react";
-import { useConvo } from "@/context/convoContext";
 import services from "../services/index";
+import { useMini } from "@/context/miniContext";
 
 const MiniInput = () => {
-  const convo = useConvo();
-  if (!convo) return null;
+  const mini = useMini();
+  if (!mini) return null;
 
   const {
     selectedText,
@@ -15,7 +15,7 @@ const MiniInput = () => {
     setMiniChatHistory,
     miniMessage,
     setMiniMessage,
-  } = convo;
+  } = mini;
 
   const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     setMiniMessage(event.target.value);
@@ -33,9 +33,12 @@ const MiniInput = () => {
         ? `'${selectedText}' ${messageContent}`
         : messageContent;
 
+      //this is where we change to reference new express function, and send over agent instead.
       const messages = await services.createConversation({
         content: contextMessage,
       });
+
+      //then right after we add the contextMessage as a followup.
 
       // messages is an array of CleanMessage[] (user msg + AI response)
       if (messages && messages.length > 0) {

@@ -9,7 +9,7 @@ const getConversations = async () => {
   return response.data
 }
 
-const createConversation = async (convoReq: {content: string, save?: true | false}) => {
+const createConversation = async (convoReq: { content: string, save?: true | false}) => {
   const response = await axios.post(`${baseURL}/conversations`, convoReq)
   return response.data
 }

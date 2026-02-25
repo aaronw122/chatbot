@@ -1,23 +1,19 @@
 import MiniMessage from "./miniMessage";
 import type { CleanMessage } from "../../../types/types";
-import { useConvo } from "@/context/convoContext";
-
-type MessageHistoryProps = {
-  history: CleanMessage[];
-};
+import { useMini } from "@/context/miniContext";
 
 const MessageHistory = () => {
-  const convo = useConvo();
+  const mini = useMini();
 
-  if (!convo) return null;
+  if (!mini) return null;
 
-  const { miniChatHistory } = convo;
+  const { miniChatHistory } = mini;
 
-  console.log("history from MessageHistory", history);
+  if (!miniChatHistory) return null;
 
   return (
     <div className="flex flex-col pb-15">
-      {miniChatHistory.map((el) => (
+      {miniChatHistory.map((el: CleanMessage) => (
         <MiniMessage
           key={el.id}
           content={el.content}

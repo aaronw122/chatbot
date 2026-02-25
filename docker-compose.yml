@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3002:3000" # map host port 3002 to container port 3000
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - otel-lgtm
+
+  otel-lgtm: # Grafana + Prometheus + Tempo + Loki + OTel Collector
+    image: grafana/otel-lgtm
+    ports:
+      - "3003:3000" # Grafana UI
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
