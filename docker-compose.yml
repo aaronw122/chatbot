@@ -1,8 +1,9 @@
 services:
   app:
+    image: chatbot
     build: .
     ports:
-      - "3002:3000" # map host port 3002 to container port 3000
+      - "127.0.0.1:3002:3000" # map host port 3002 to container port 3000
     env_file:
       - ./backend/.env
     depends_on:

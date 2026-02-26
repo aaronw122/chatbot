@@ -11,6 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router";
 
+const oauthCallbackURL =
+  import.meta.env.VITE_OAUTH_CALLBACK_URL?.trim() ||
+  (import.meta.env.DEV ? "http://localhost:5173/" : `${window.location.origin}/`);
+
 const SignIn = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -40,7 +44,7 @@ const SignIn = () => {
   const handleGoogleLogin = async () => {
     await authClient.signIn.social({
       provider: "google",
-      callbackURL: "http://localhost:5173/",
+      callbackURL: oauthCallbackURL,
     });
   };
 

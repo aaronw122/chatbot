@@ -1,6 +1,7 @@
 import axios from 'axios'
 
-const baseURL = 'http://localhost:3000'
+const configuredApiUrl = import.meta.env.VITE_API_URL?.trim()
+const baseURL = configuredApiUrl || (import.meta.env.DEV ? 'http://localhost:3000' : window.location.origin)
 
 axios.defaults.withCredentials = true;
 
