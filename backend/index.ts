@@ -10,12 +10,23 @@ import path from 'path';
 import type { WebSocket } from 'ws';
 import { InMemoryStorage, SupabaseStorage, type Storage } from './db/storage';
 const app = express()
+const allowedOrigins = Array.from(
+  new Set(
+    [
+      process.env.FRONTEND_URL,
+      process.env.BETTER_AUTH_URL,
+      "http://localhost:5173",
+    ]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.replace(/\/+$/, ""))
+  )
+)
 
 app.use(express.json())
 app.use(express.static(path.join(import.meta.dirname, 'dist')))
 
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: allowedOrigins,
   credentials: true
 }))
 
