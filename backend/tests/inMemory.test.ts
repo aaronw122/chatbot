@@ -75,6 +75,19 @@ describe('message work', () => {
     expect(messages[0]).toHaveProperty('createdAt');
   })
 })
+describe('getConversation works', () => {
+  it('returns the conversation when it exists', async () => {
+    const convo = await storage.createConversation({ content: "jack the rabbit hit the", userId: "12" })
+    const found = await storage.getConversation({ convoId: convo.id })
+    expect(found).not.toBeNull()
+    expect(found!.id).toBe(convo.id)
+    expect(found!.userId).toBe("12")
+  })
+  it('returns null when the conversation does not exist', async () => {
+    const found = await storage.getConversation({ convoId: "does-not-exist" })
+    expect(found).toBeNull()
+  })
+})
 describe('delete convo work', () => {
   it('messages are in right shape + available', () => {
 

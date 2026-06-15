@@ -1,4 +1,3 @@
-import { createRenderResumeDataCache } from 'next/dist/server/resume-data-cache/resume-data-cache'
 import type { Message, Messages, Conversation, CreateConversation, MessageType, Content, CleanMessage} from '../../types/types'
 import { supabaseAdmin } from './supabaseClient'
 
@@ -12,6 +11,8 @@ export interface Storage {
   getMessages({ convoId }: { convoId: string }): Promise<Message[] | []>
 
   getConversations({ userId }: { userId: string }): Promise<Conversation[]>
+
+  getConversation({ convoId }: { convoId: string }): Promise<Conversation | null>
 
   saveConversation({ convoId }: { convoId: string }): Promise<Conversation>
 
@@ -97,6 +98,10 @@ export class InMemoryStorage implements Storage {
     //for now content is just a string, we will not permit others
     console.log('user Convos', userConvos)
     return userConvos
+  }
+
+  async getConversation({ convoId }: { convoId: string }): Promise<Conversation | null> {
+    return this.conversations.get(convoId) ?? null
   }
 
   async getMessages({ convoId }: { convoId: string }) {
@@ -236,6 +241,25 @@ export class SupabaseStorage implements Storage {
       save: row.save
     })))
   }
+  async getConversation({ convoId }: { convoId: string }): Promise<Conversation | null> {
+    const { data, error } = await supabaseAdmin
+      .from('conversations')
+      .select()
+      .eq('id', convoId)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!data) return null
+
+    return {
+      id: data.id,
+      userId: data.user_id,
+      title: data.title,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      save: data.save
+    }
+  }
   async getMessages({ convoId }: { convoId: string }) {
     const { data, error } = await supabaseAdmin
       .from('messages')
@@ -257,7 +281,7 @@ export class SupabaseStorage implements Storage {
       .update({
         save: true
       })
-      .eq('convo_id', convoId)
+      .eq('id', convoId)
       .select()
       .single()
 
