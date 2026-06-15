@@ -30,8 +30,6 @@ app.use(cors({
   credentials: true
 }))
 
-const UUIDplaceholder = "00000000-0000-0000-0000-000000000001"
-
 const storage: Storage = process.env.USE_SUPABASE === 'true' ? new SupabaseStorage()
   : new InMemoryStorage()
 
@@ -110,9 +108,10 @@ app.post('/miniConvo', async (req: Request, res: Response) => {
       return res.status(404).json({ error: "unauthorized" })
     }
 
-    const { content, save, role } = req.body
+    const { content } = req.body
 
-    const newConvo = await storage.createConversation({ content: content, save: false, role: role })
+    const newConvo = await storage.createConversation({ content: content, userId: session.user.id, save: false })
+    res.json(newConvo)
   }
   catch(error) {
     console.log('failed to create miniConvo', error)
@@ -122,7 +121,21 @@ app.post('/miniConvo', async (req: Request, res: Response) => {
 
 app.get('/messages/:id', async (req: Request, res: Response) => {
   try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers)
+    })
+
+    if (!session) {
+      return res.status(401).json({ error: "unauthorized" })
+    }
+
     const id = req.params.id as string
+
+    const convo = await storage.getConversation({ convoId: id })
+    if (!convo || convo.userId !== session.user.id) {
+      return res.status(404).json({ error: "not found" })
+    }
+
     // need to fix axios after as well to send through convoId
     const messages = await storage.getMessages({ convoId: id })
     console.log('messages express', messages)
@@ -137,8 +150,21 @@ app.get('/messages/:id', async (req: Request, res: Response) => {
 app.post('/messages/:id', async (req: Request, res: Response) => {
 
   try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers)
+    })
+
+    if (!session) {
+      return res.status(401).json({ error: "unauthorized" })
+    }
+
     const id = req.params.id as string
     console.log('messages id', id)
+
+    const convo = await storage.getConversation({ convoId: id })
+    if (!convo || convo.userId !== session.user.id) {
+      return res.status(404).json({ error: "not found" })
+    }
 
     const body = req.body
     console.log('request body', body)
@@ -153,7 +179,6 @@ app.post('/messages/:id', async (req: Request, res: Response) => {
 
     console.log('parsed anthropic', aiMsg)
 
-    //not firing
     res.json(aiMsg)
   }
   catch (error) {
