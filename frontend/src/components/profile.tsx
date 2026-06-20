@@ -16,9 +16,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ChevronsUpDown } from "lucide-react";
+import Settings from "./settings";
+import { useSettings } from "@/context/settingsContext";
 
 export const Profile = () => {
   const { isMobile } = useSidebar();
+  const settings = useSettings();
 
   const { data: session, isPending } = authClient.useSession();
   let firstLetter = "";
@@ -79,12 +82,16 @@ export const Profile = () => {
             sideOffset={4}
           >
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => settings?.openSettings()}>
+              Settings
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => logOut()}>
               Log out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
+      <Settings />
     </SidebarMenu>
   );
 };
