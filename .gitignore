@@ -21,3 +21,6 @@ dist/
 sqlite-design.md
 supabase-migration-plan.md
 conversations/
+
+# review scratch (plan reviews, etc.)
+notes/
