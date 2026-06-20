@@ -30,8 +30,6 @@ app.use(cors({
   credentials: true
 }))
 
-const UUIDplaceholder = "00000000-0000-0000-0000-000000000001"
-
 const storage: Storage = process.env.USE_SUPABASE === 'true' ? new SupabaseStorage()
   : new InMemoryStorage()
 
@@ -57,8 +55,6 @@ app.get('/conversations', async (req: Request, res: Response) => {
       headers: fromNodeHeaders(req.headers)
     })
 
-    console.log('session', session)
-
     if (!session) {
       return res.status(404).json({error: "unauthorized"})
     }
@@ -83,13 +79,10 @@ app.post('/conversations', async (req: Request, res: Response) => {
     }
 
     const { content, save } = req.body
-    //for now hardcoding userId
     const newConvo = await storage.createConversation({ content: content, userId: session.user.id, save: save })
     const userMsg = await storage.addMessage({ convoId: newConvo.id, content: content, role: "user" })
 
     const aiMsg = await getAIResponse(newConvo.id)
-
-    console.log('parsed anthropic', aiMsg)
 
     const convoWithRes = await storage.getMessages({convoId: newConvo.id})
     res.json(convoWithRes)
@@ -110,22 +103,36 @@ app.post('/miniConvo', async (req: Request, res: Response) => {
       return res.status(404).json({ error: "unauthorized" })
     }
 
-    const { content, save, role } = req.body
+    const { content } = req.body
 
-    const newConvo = await storage.createConversation({ content: content, save: false, role: role })
+    const newConvo = await storage.createConversation({ content: content, userId: session.user.id, save: false })
+    res.json(newConvo)
   }
   catch(error) {
-    console.log('failed to create miniConvo', error)
+    console.error('failed to create miniConvo', error)
     res.status(500).json({error: "server error"})
   }
 })
 
 app.get('/messages/:id', async (req: Request, res: Response) => {
   try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers)
+    })
+
+    if (!session) {
+      return res.status(401).json({ error: "unauthorized" })
+    }
+
     const id = req.params.id as string
+
+    const convo = await storage.getConversation({ convoId: id })
+    if (!convo || convo.userId !== session.user.id) {
+      return res.status(404).json({ error: "not found" })
+    }
+
     // need to fix axios after as well to send through convoId
     const messages = await storage.getMessages({ convoId: id })
-    console.log('messages express', messages)
     res.json(messages)
   }
   catch (error) {
@@ -137,23 +144,30 @@ app.get('/messages/:id', async (req: Request, res: Response) => {
 app.post('/messages/:id', async (req: Request, res: Response) => {
 
   try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers)
+    })
+
+    if (!session) {
+      return res.status(401).json({ error: "unauthorized" })
+    }
+
     const id = req.params.id as string
-    console.log('messages id', id)
+
+    const convo = await storage.getConversation({ convoId: id })
+    if (!convo || convo.userId !== session.user.id) {
+      return res.status(404).json({ error: "not found" })
+    }
 
     const body = req.body
-    console.log('request body', body)
 
     const post = await storage.addMessage({ convoId: id, role: body.role, content: body.content })
 
-    console.log('post', post)
     //refactor client handling so they just append new message into history state
 
     //getAIResponse performs the addMessage post inside
     const aiMsg = await getAIResponse(id)
 
-    console.log('parsed anthropic', aiMsg)
-
-    //not firing
     res.json(aiMsg)
   }
   catch (error) {

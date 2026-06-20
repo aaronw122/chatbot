@@ -1,0 +1,15 @@
+.git
+**/node_modules
+**/.env
+**/.env.*
+backend/dist
+frontend/dist
+terraform
+supabase/.temp
+supabase/.branches
+.claude
+notes
+diagrams
+*.md
+*.pem
+*.tar.gz

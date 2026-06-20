@@ -1,5 +1,5 @@
-import WebSocket from 'ws';
-import Anthropic from '@anthropic-ai/sdk'
+import type WebSocket from 'ws';
+import type Anthropic from '@anthropic-ai/sdk'
 
 
 export type WSmap = Map<string, Set<WebSocket>>
