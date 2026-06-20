@@ -7,16 +7,19 @@ import type { CleanMessage, Message } from '../../types/types'
 // /api/models route and the per-provider dropdown can index directly.
 // This is the single source of truth for model selection — the frontend never
 // hard-codes model strings.
+// Current as of June 2026. Model strings churn fast — when these go stale,
+// this is the only place to update (the frontend reads them via /api/models).
 export const MODELS: Record<Provider, string[]> = {
   anthropic: [
-    'claude-sonnet-4-5-20250929', // current default
     'claude-opus-4-8',
     'claude-sonnet-4-6',
-    'claude-haiku-4-5',
+    'claude-haiku-4-5-20251001',
   ],
   openai: [
-    'gpt-4o',
-    'gpt-4o-mini',
+    'gpt-5.5',
+    'gpt-5.4',
+    'gpt-5.4-mini',
+    'gpt-5.4-nano',
   ],
 }
 
