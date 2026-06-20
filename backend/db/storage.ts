@@ -1,7 +1,16 @@
-import type { Message, Messages, Conversation, CreateConversation, MessageType, Content, CleanMessage} from '../../types/types'
+import type { Message, Messages, Conversation, CreateConversation, MessageType, Content, CleanMessage, Provider, UserKeyMeta } from '../../types/types'
 import { supabaseAdmin } from './supabaseClient'
+import { encrypt, decrypt } from '../utils/crypto'
 
+// Internal decrypted shape returned only on the request path (never to the browser).
+export type ActiveKey = { provider: Provider; model: string; apiKey: string }
 
+// Format a masked display string from a decrypted key, e.g. "sk-…1234".
+// The frontend never receives or formats raw key material.
+function maskKey(plaintext: string): string {
+  const last4 = plaintext.slice(-4)
+  return `sk-…${last4}`
+}
 
 export interface Storage {
   addMessage({ convoId, role, content }: MessageType): Promise<CleanMessage>
@@ -17,12 +26,39 @@ export interface Storage {
   saveConversation({ convoId }: { convoId: string }): Promise<Conversation>
 
   //deleteConversation({convoId}: { convoId: string }): Promise<void>
+
+  // BYOK (Phase 1) — per-user encrypted API key CRUD.
+  // MF5: upsertApiKey never reads or writes is_active. Activation happens only via
+  // the "first key" branch in POST /api/keys or explicit setActiveProvider.
+  upsertApiKey({ userId, provider, encryptedKey, model }: { userId: string; provider: Provider; encryptedKey: string; model: string }): Promise<UserKeyMeta>
+
+  listApiKeys({ userId }: { userId: string }): Promise<UserKeyMeta[]>
+
+  deleteApiKey({ userId, provider }: { userId: string; provider: Provider }): Promise<void>
+
+  // Set the chosen provider active; clear is_active on all others for the user.
+  setActiveProvider({ userId, provider }: { userId: string; provider: Provider }): Promise<void>
+
+  // Internal — returns the decrypted active key for the request path, or null.
+  getActiveKey({ userId }: { userId: string }): Promise<ActiveKey | null>
+}
+
+// Internal row shape held by InMemoryStorage for API keys.
+type ApiKeyRow = {
+  userId: string
+  provider: Provider
+  encryptedKey: string
+  model: string
+  isActive: boolean
+  updatedAt: string
 }
 
 export class InMemoryStorage implements Storage {
   //creates a map with key being convoId, value being a list of conversations
   private conversations: Map<string, Conversation> = new Map()
   private messages: Map<string, Message> = new Map()
+  // Keyed by `${userId}:${provider}` to enforce one row per (user, provider).
+  private apiKeys: Map<string, ApiKeyRow> = new Map()
 
   //conversation can only be created if one message has been sent
   // upon sending message, we create conversation AND add it to message class with that convo id
@@ -154,6 +190,87 @@ export class InMemoryStorage implements Storage {
     this.conversations = newConvos
     const newMessages= new Map()
     this.messages = newMessages
+    this.apiKeys = new Map()
+  }
+
+  // ----- BYOK: API key CRUD -----
+
+  private keyOf(userId: string, provider: Provider): string {
+    return `${userId}:${provider}`
+  }
+
+  // MF5: never touches is_active. Insert preserves false default; update on an
+  // existing (user, provider) row leaves is_active unchanged (key rotation).
+  async upsertApiKey({ userId, provider, encryptedKey, model }: { userId: string; provider: Provider; encryptedKey: string; model: string }): Promise<UserKeyMeta> {
+    const key = this.keyOf(userId, provider)
+    const existing = this.apiKeys.get(key)
+    const row: ApiKeyRow = {
+      userId,
+      provider,
+      encryptedKey,
+      model,
+      isActive: existing ? existing.isActive : false,
+      updatedAt: new Date().toISOString(),
+    }
+    this.apiKeys.set(key, row)
+    return {
+      provider: row.provider,
+      model: row.model,
+      isActive: row.isActive,
+      maskedKey: maskKey(decrypt(row.encryptedKey)),
+      updatedAt: row.updatedAt,
+    }
+  }
+
+  async listApiKeys({ userId }: { userId: string }): Promise<UserKeyMeta[]> {
+    return [...this.apiKeys.values()]
+      .filter((row) => row.userId === userId)
+      .map((row) => ({
+        provider: row.provider,
+        model: row.model,
+        isActive: row.isActive,
+        maskedKey: maskKey(decrypt(row.encryptedKey)),
+        updatedAt: row.updatedAt,
+      }))
+  }
+
+  // Med7: if the deleted key was active and another provider key remains, promote
+  // the most-recently-updated remaining key to active. If none remain, gated state.
+  async deleteApiKey({ userId, provider }: { userId: string; provider: Provider }): Promise<void> {
+    const key = this.keyOf(userId, provider)
+    const deleted = this.apiKeys.get(key)
+    this.apiKeys.delete(key)
+
+    if (deleted?.isActive) {
+      const remaining = [...this.apiKeys.values()].filter((row) => row.userId === userId)
+      if (remaining.length > 0) {
+        // pick the max updatedAt (most recently updated)
+        const promote = remaining.reduce((a, b) => (a.updatedAt >= b.updatedAt ? a : b))
+        promote.isActive = true
+      }
+    }
+  }
+
+  async setActiveProvider({ userId, provider }: { userId: string; provider: Provider }): Promise<void> {
+    const target = this.apiKeys.get(this.keyOf(userId, provider))
+    if (!target) {
+      throw new Error(`no key for provider "${provider}"`)
+    }
+    for (const row of this.apiKeys.values()) {
+      if (row.userId === userId) {
+        row.isActive = row.provider === provider
+      }
+    }
+  }
+
+  async getActiveKey({ userId }: { userId: string }): Promise<ActiveKey | null> {
+    const active = [...this.apiKeys.values()].find((row) => row.userId === userId && row.isActive)
+    if (!active) return null
+    return {
+      provider: active.provider,
+      model: active.model,
+      apiKey: decrypt(active.encryptedKey),
+    }
   }
 }
 
@@ -294,6 +411,139 @@ export class SupabaseStorage implements Storage {
       createdAt: data.created_at,
       updatedAt: data.updated_at,
       save: data.save
+    }
+  }
+
+  // ----- BYOK: API key CRUD (all queries filter user_id in WHERE) -----
+
+  // MF5: upsert never reads or writes is_active. On conflict (user_id, provider)
+  // we update encrypted_key + model + updated_at only; is_active is left as-is
+  // (DB column keeps its prior value on update; new rows default false).
+  async upsertApiKey({ userId, provider, encryptedKey, model }: { userId: string; provider: Provider; encryptedKey: string; model: string }): Promise<UserKeyMeta> {
+    const { data, error } = await supabaseAdmin
+      .from('user_api_keys')
+      .upsert(
+        {
+          user_id: userId,
+          provider,
+          encrypted_key: encryptedKey,
+          model,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,provider' }
+      )
+      .select()
+      .single()
+
+    if (error) throw error
+
+    return {
+      provider: data.provider,
+      model: data.model,
+      isActive: data.is_active,
+      maskedKey: maskKey(decrypt(data.encrypted_key)),
+      updatedAt: data.updated_at,
+    }
+  }
+
+  async listApiKeys({ userId }: { userId: string }): Promise<UserKeyMeta[]> {
+    const { data, error } = await supabaseAdmin
+      .from('user_api_keys')
+      .select()
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+
+    if (error) throw error
+
+    return data.map((row) => ({
+      provider: row.provider,
+      model: row.model,
+      isActive: row.is_active,
+      maskedKey: maskKey(decrypt(row.encrypted_key)),
+      updatedAt: row.updated_at,
+    }))
+  }
+
+  // Med7: if the deleted key was active and another provider key remains, promote
+  // the most-recently-updated remaining key (order by updated_at desc limit 1).
+  async deleteApiKey({ userId, provider }: { userId: string; provider: Provider }): Promise<void> {
+    const { data: deleted, error: deleteError } = await supabaseAdmin
+      .from('user_api_keys')
+      .delete()
+      .eq('user_id', userId)
+      .eq('provider', provider)
+      .select()
+      .maybeSingle()
+
+    if (deleteError) throw deleteError
+
+    if (deleted?.is_active) {
+      const { data: remaining, error: remainingError } = await supabaseAdmin
+        .from('user_api_keys')
+        .select('provider')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+
+      if (remainingError) throw remainingError
+
+      const promote = remaining?.[0]
+      if (promote) {
+        const { error: promoteError } = await supabaseAdmin
+          .from('user_api_keys')
+          .update({ is_active: true })
+          .eq('user_id', userId)
+          .eq('provider', promote.provider)
+
+        if (promoteError) throw promoteError
+      }
+    }
+  }
+
+  async setActiveProvider({ userId, provider }: { userId: string; provider: Provider }): Promise<void> {
+    // Ensure the target key exists for this user.
+    const { data: target, error: targetError } = await supabaseAdmin
+      .from('user_api_keys')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('provider', provider)
+      .maybeSingle()
+
+    if (targetError) throw targetError
+    if (!target) throw new Error(`no key for provider "${provider}"`)
+
+    // Clear is_active on all of this user's keys, then set the chosen one.
+    const { error: clearError } = await supabaseAdmin
+      .from('user_api_keys')
+      .update({ is_active: false })
+      .eq('user_id', userId)
+
+    if (clearError) throw clearError
+
+    const { error: setError } = await supabaseAdmin
+      .from('user_api_keys')
+      .update({ is_active: true })
+      .eq('user_id', userId)
+      .eq('provider', provider)
+
+    if (setError) throw setError
+  }
+
+  async getActiveKey({ userId }: { userId: string }): Promise<ActiveKey | null> {
+    const { data, error } = await supabaseAdmin
+      .from('user_api_keys')
+      .select()
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!data) return null
+
+    return {
+      provider: data.provider,
+      model: data.model,
+      apiKey: decrypt(data.encrypted_key),
     }
   }
 }

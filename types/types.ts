@@ -35,6 +35,19 @@ export type MessageType = Anthropic.MessageParam & { convoId: string }
 
 export type Content = Anthropic.MessageParam["content"]
 
+// BYOK (Phase 1) — plain literal types. Do NOT add runtime/value imports of the
+// OpenAI or Anthropic SDKs to this file: it is bundled by the frontend and a
+// value import breaks `vite build`. SDK value-imports stay in backend/llm/provider.ts.
+export type Provider = 'openai' | 'anthropic';
+
+export type UserKeyMeta = {
+  provider: Provider;
+  model: string;
+  isActive: boolean;
+  maskedKey: string;   // backend-formatted display string, e.g. "sk-…1234"
+  updatedAt: string;   // ISO timestamp
+};
+
 export interface CleanMessage {
   id: string,
   convoId: string,
