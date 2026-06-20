@@ -8,6 +8,7 @@ import ConvoList from "./components/convoList.tsx";
 import { ConvoProvider } from "./context/convoContext.tsx";
 import { MessageProvider } from "./context/messageContext.tsx";
 import { MiniProvider } from "./context/miniContext.tsx";
+import { SettingsProvider } from "./context/settingsContext.tsx";
 import { SidebarProvider } from "./components/ui/sidebar.tsx";
 import SignUp from "./pages/signUp.tsx";
 
@@ -16,6 +17,7 @@ createRoot(document.getElementById("root")!).render(
     <ConvoProvider>
       <MessageProvider>
         <MiniProvider>
+          <SettingsProvider>
           <BrowserRouter>
           <SidebarProvider>
           <div className="w-fit m-10">
@@ -30,6 +32,7 @@ createRoot(document.getElementById("root")!).render(
           </div>
           </SidebarProvider>
           </BrowserRouter>
+          </SettingsProvider>
         </MiniProvider>
       </MessageProvider>
     </ConvoProvider>
