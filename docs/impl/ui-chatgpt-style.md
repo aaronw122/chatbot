@@ -24,19 +24,26 @@ Everything else builds on this, so it lands first and the Bucket B agents consum
 - Confirm/define: sidebar bg, hover/active row colors, user-bubble green, assistant text color, composer border/focus ring (green), font stack.
 
 ### A.2 Branding sweep
-- Replace all "EasyBranch"/"easy branch" with **forklet** (sidebar header `convoList.tsx:44`, `App.tsx` logged-out title, page `<title>`, favicon if trivial). Keep the "grow your curiosity." tagline for the empty state.
+- Replace all "EasyBranch"/"easy branch" with **forklet**. The only two literal "EasyBranch"/"easy branch" strings are in `convoList.tsx` (sidebar header `convoList.tsx:44`) and `App.tsx` (logged-out branch) — a grep for "EasyBranch" will catch only these two.
+- Page `<title>`: in `frontend/index.html` the `<title>` is currently the Vite default `"frontend"` (NOT "EasyBranch", so a grep for "EasyBranch" won't surface it) — set it to **forklet** outright.
+- Favicon: currently the default `vite.svg`. Leave unless trivial.
+- Keep the "grow your curiosity." tagline for the empty state.
 
 ### A.3 App layout shell
-- Establish the two-pane shell (fixed sidebar + flexible main column) cleanly in `main.tsx`/layout so the chat column centers with a max width and the composer pins to the bottom. Remove the ad-hoc `m-10`/`mx-50` margins in `main.tsx`/`App.tsx` in favor of the shell.
+- Establish the two-pane shell (fixed sidebar + flexible main column) cleanly in `main.tsx`/layout so the chat column centers with a max width.
+- **Centering ownership (binding rule — also document in the A.1 DESIGN.md deliverable):** The shell owns the two-pane geometry, the centered scroll region, and the column `max-width` + horizontal padding. DESIGN.md must document exactly which element owns the centered-column `max-width` + horizontal padding and which element is the scroll container. The composer is page-rendered (B3 is presentational, wired per-page), so **composer *placement* is per-page, not shell-owned**: the in-chat composer is pinned at the bottom of the chat column, and the empty-state composer is centered on the page. Binding rule for downstream agents: **B2/B4/B5 render content-only and MUST NOT add their own `mx-auto`/`max-w-*` wrappers** — column centering lives in the shell only.
+- **Current double-centering to undo:** `main.tsx` `justify-center` + `App.tsx` `lg:mx-50` + `chat.tsx` `mx-auto max-w-3xl`. Collapse all of these into the single shell-owned centered column.
+- **File ownership (MF2):** A.3 owns ONLY the `main.tsx` shell wrapper — remove the outer margin classes there; do NOT restyle `App.tsx` internals. B5 owns everything inside `App.tsx`.
 
 ---
 
 ## Bucket A2 — Backend: active-model update (1 small agent, parallel with A)
 The header model switcher (B4) must change the active provider's model **without** re-entering the key. Current routes: `setActiveProvider({provider})` flips active; model is only set via `addKey` (which needs the key). Add:
-- **`POST /api/keys/active`** — extend to optionally accept `{ provider, model? }`: set provider active AND, if `model` given (validated via `assertModelAllowed`), update that provider's stored `model` (no key required, no re-encryption). Keep back-compat (model optional).
-- Storage: add/extend `setActiveProvider({userId, provider, model?})` on the interface + both impls to update the `model` column when provided. Never touches `encrypted_key`.
+- **`POST /api/keys/active`** — extend to optionally accept `{ provider, model? }`: set provider active AND, if `model` given (validated via `assertModelAllowed`), update that provider's stored `model` (no key required, no re-encryption). This applies only to a provider that already has a key row — keep the existing 404-if-not-configured guard; "no key required" means no re-entry of the key value, not creating a keyless row. Keep back-compat (model optional).
+- Storage: add/extend `setActiveProvider({userId, provider, model?})` on the interface + both impls to update the `model` column when provided. Never touches `encrypted_key`. Write `model` onto the `user_api_keys` row for `(userId, provider)` — the same row `getActiveKey` reads — so no chat-path change is required.
 - Tests: switching model for an existing provider persists; invalid model → 400; unauth → 401.
 - This is the only backend change; keep it isolated so it can merge independently.
+- **Frontend service (assigned to B4, see B4):** the frontend `setActiveProvider` service fn in `frontend/src/services/index.ts` currently posts `{ provider }` only — it MUST be extended to `setActiveProvider(provider, model?)` posting `{ provider, model? }`, with `model` optional for back-compat so the existing `settings.tsx` call (1-arg) keeps working. Without this the header switcher (B4) silently no-ops.
 
 ---
 
@@ -48,19 +55,25 @@ The header model switcher (B4) must change the active provider's model **without
 - Bottom account area: avatar + name/email, menu with **Settings** (opens BYOK dialog) and **Log out** (already in `profile.tsx` — restyle, add Settings entry if not already surfaced there).
 
 ### B2 Chat surface (`chat.tsx`, `messageHistory`, `message`)
+- Remove the existing `mx-auto max-w-3xl` centering wrapper from `chat.tsx` (centering now lives in the shell per A.3); render chat content only.
 - Centered column, generous vertical rhythm. User message = green bubble, right-aligned; assistant = plain markdown, left-aligned, comfortable line length.
 - Hover action on assistant messages: **copy** (lucide `Copy`).
-- **Keep the branch feature**: text-selection → floating "reply"/branch button → `miniWindow`. Restyle the floating button + mini-window to match the new look (green accent). Do not remove the mini context wiring.
+- **Keep the branch feature**: text-selection → floating "reply"/branch button → `miniWindow`. Restyle the full branch-feature surface to match the new look (green accent): `miniWindow.tsx`, `miniInput.tsx`, `miniChats.tsx`, `miniMessage.tsx`, `miniMessageHistory.tsx`, AND the inline reply/branch button in `message.tsx` (it is raw inline markup ~`message.tsx:57-77`, NOT a separate component — `replyButton.tsx` is a dead empty file). Do not remove the mini context wiring or break `@floating-ui/dom` positioning.
+- The mini composer (`miniInput.tsx`) + mini message bubbles (`miniMessage.tsx`) MUST consume the same DESIGN.md composer + bubble conventions as B3/B2 so they do not diverge.
 - Remove leftover `console.log` in `messageHistory.tsx`/`message.tsx`.
 
 ### B3 Composer (`input`, `homeInput`)
 - Composer: rounded container, **auto-growing** textarea (grows with content, max height then scrolls), send button (lucide `Send`/arrow) inset on the right, green when enabled / disabled when empty. Enter-to-send, Shift+Enter newline.
+- **Shared composer contract (binding):** build the composer as a PRESENTATIONAL component with an injected submit — `<Composer placeholder value onChange onSubmit disabled />`. It owns no data-fetching/mutation logic itself. The in-chat instance passes `onSubmit={() => sendMessage(id)}`; the empty-state instance (B5) passes `onSubmit={createConversation}`.
+- **Out of scope for the composer:** the optimistic-history branch currently inside `homeInput.tsx` (where it renders `<Chats>` instead of the input) does NOT move into the composer — it stays in B5/`App.tsx`.
 - Placeholder: **"ask follow up"** for the in-chat composer (locked). Shared composer component used by both the in-chat input and the empty-state input; the empty-state instance may use a first-message placeholder (e.g. "ask away") since "ask follow up" implies an ongoing thread.
 
 ### B4 Header + model switcher (new `components/chatHeader.tsx`)
-- Slim top bar in the chat column. Left: active **provider + model dropdown** populated from `GET /api/models` and the user's configured keys (`GET /api/keys` → which providers have keys + current model/active). Selecting an option calls the extended `POST /api/keys/active` (A2) to switch provider and/or model inline.
+- **Extend the frontend service signature (MF6, owned by B4):** `setActiveProvider` in `frontend/src/services/index.ts` currently posts `{ provider }` only — extend it to `setActiveProvider(provider, model?)` posting `{ provider, model? }`. `model` is optional for back-compat so the existing 1-arg call in `settings.tsx` keeps working. **Without this change the header switcher silently no-ops** (the model never reaches the backend).
+- Slim top bar in the chat column. Left: active **provider + model dropdown** populated from `GET /api/models` and the user's configured keys (`GET /api/keys` → which providers have keys + current model/active). Selecting an option calls the extended `setActiveProvider(provider, model)` → `POST /api/keys/active` (A2) to switch provider and/or model inline.
 - If no key configured: show a subtle "Add a key" affordance that opens Settings (reuse the existing 409 gate handler/`settingsContext`).
 - Reflects the active selection; updates optimistically.
+- On a failed `POST /api/keys/active` (400/network), roll back the optimistic selection and surface a brief error; reconcile actual state via `GET /api/keys`. Handle the partial state where some providers have no key (don't show a switch that will 404).
 
 ### B5 Empty / home state (`App.tsx`)
 - Centered greeting (forklet wordmark + "grow your curiosity.") with the shared composer centered on the page (ChatGPT empty-state convention). On submit, behaves like `homeInput` today (create conversation → navigate). Logged-out state: forklet + sign-in (existing `SignIn`), restyled.
@@ -72,6 +85,7 @@ The header model switcher (B4) must change the active provider's model **without
 
 ## Bucket C — Integration & verify (orchestrator)
 - Merge A + A2 first, then B1–B6 onto the integration branch.
+- **Intra-B dependency:** **B5 depends on B3** — the empty-state consumes the shared presentational composer defined in B3, so B3's `<Composer>` component must land (or its contract be fixed) before B5 wires the empty state. Sequence B3 before B5 (or have B5 build against B3's locked signature).
 - **Visual cohesion check** (the key risk for parallel UI work): one agent reviews the merged result against `DESIGN.md` — consistent tokens, spacing, green usage, no two surfaces diverging. Fix drift.
 - `bunx vite build` must pass (no SDK value-imports; types stay `import type`).
 - Deploy to easybranch.net (native build) and eyeball: sidebar, chat (user bubble + assistant markdown), composer (auto-grow, enter-to-send), header model switch actually changes the model used, branch/mini-window still works, settings dialog, empty state.
