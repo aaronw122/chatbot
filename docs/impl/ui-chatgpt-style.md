@@ -54,8 +54,8 @@ The header model switcher (B4) must change the active provider's model **without
 - Remove leftover `console.log` in `messageHistory.tsx`/`message.tsx`.
 
 ### B3 Composer (`input`, `homeInput`)
-- ChatGPT-style composer: rounded container, **auto-growing** textarea (grows with content, max height then scrolls), send button (lucide `Send`/arrow) inset on the right, green when enabled / disabled when empty. Enter-to-send, Shift+Enter newline.
-- Placeholder: forklet-appropriate (e.g. "Ask away" / "Message forklet"). Shared composer component used by both the in-chat input and the empty-state input.
+- Composer: rounded container, **auto-growing** textarea (grows with content, max height then scrolls), send button (lucide `Send`/arrow) inset on the right, green when enabled / disabled when empty. Enter-to-send, Shift+Enter newline.
+- Placeholder: **"ask follow up"** for the in-chat composer (locked). Shared composer component used by both the in-chat input and the empty-state input; the empty-state instance may use a first-message placeholder (e.g. "ask away") since "ask follow up" implies an ongoing thread.
 
 ### B4 Header + model switcher (new `components/chatHeader.tsx`)
 - Slim top bar in the chat column. Left: active **provider + model dropdown** populated from `GET /api/models` and the user's configured keys (`GET /api/keys` → which providers have keys + current model/active). Selecting an option calls the extended `POST /api/keys/active` (A2) to switch provider and/or model inline.
@@ -85,7 +85,7 @@ The header model switcher (B4) must change the active provider's model **without
 - **Build hygiene** — keep `types/types.ts` `import type`-only; composer/header must not pull SDK value-imports. `vite build` (not `tsc -b`) is the gate.
 - **Auto-grow textarea** — common source of layout jank; cap max-height and handle paste.
 
-## Open questions
-1. Exact green — keep the current `--primary` green, or shift toward a specific shade? (Default: keep current.)
-2. Composer placeholder copy — "Ask away" (current) vs "Message forklet"? (Default: "Ask away".)
-3. Model switcher: switch provider+model together, or provider-only with model as a sub-choice? (Default: one dropdown listing each configured provider's models, pick (provider, model) in one go.)
+## Decisions (resolved)
+1. **Green** — keep the current `--primary` green.
+2. **Composer placeholder** — "ask follow up" (in-chat). Empty state may use a first-message variant.
+3. **Model switcher** — one dropdown listing each configured provider's models; pick (provider, model) together in one go (persisted via the extended `POST /api/keys/active`, A2).
