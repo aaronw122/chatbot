@@ -41,7 +41,7 @@ const ConvoList = () => {
         <Sidebar collapsible="icon">
           <SidebarHeader>
             <div className="flex flex-col gap-2">
-              <h4>EasyBranch</h4>
+              <h4>forklet</h4>
               <NewChat />
             </div>
           </SidebarHeader>
