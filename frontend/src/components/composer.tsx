@@ -47,7 +47,7 @@ const Composer = ({
     <div
       className={cn(
         "flex items-end gap-2 rounded-2xl border border-input bg-background p-2 shadow-sm",
-        "focus-within:ring-1 focus-within:ring-ring focus-within:border-ring",
+        "focus-within:ring-[0.5px] focus-within:ring-ring/50 focus-within:border-ring",
       )}
     >
       <textarea
