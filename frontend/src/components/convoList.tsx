@@ -35,7 +35,7 @@ const ConvoList = () => {
     <Sidebar collapsible="icon">
       <SidebarHeader className="gap-3 px-3 pt-3">
         <h1 className="px-1 text-lg font-bold tracking-tight text-primary group-data-[collapsible=icon]:hidden">
-          forklet
+          easybranch
         </h1>
         <NewChat />
       </SidebarHeader>
