@@ -17,7 +17,7 @@ function App() {
       <div className="flex flex-col items-center gap-1">
         <h1 className="text-center text-6xl font-bold text-primary">easybranch</h1>
         <h5 className="text-center text-muted-foreground">
-          grow your curiosity.
+          forking made easy
         </h5>
       </div>
       <div className="w-full">{session ? <HomeInput /> : <SignIn />}</div>
