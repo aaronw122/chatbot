@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AlertCircle, Check, ChevronDown, KeyRound } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -173,18 +174,20 @@ const Settings = () => {
         </DialogHeader>
 
         {settings.noKeyPrompt && (
-          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            {settings.noKeyPrompt}
+          <div className="flex items-start gap-2 rounded-lg border border-border bg-muted px-3 py-2.5 text-sm text-foreground">
+            <KeyRound className="mt-0.5 size-4 shrink-0 text-primary" />
+            <span>{settings.noKeyPrompt}</span>
           </div>
         )}
 
         {error && (
-          <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
-            {error}
+          <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+            <AlertCircle className="mt-0.5 size-4 shrink-0" />
+            <span>{error}</span>
           </div>
         )}
 
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-4">
           {PROVIDERS.map((provider) => {
             const meta = keyFor(provider);
             const draft = drafts[provider];
@@ -195,25 +198,26 @@ const Settings = () => {
             return (
               <div
                 key={provider}
-                className="flex flex-col gap-3 rounded-lg border p-4"
+                className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4"
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium">
+                    <span className="font-medium text-foreground">
                       {PROVIDER_LABELS[provider]}
                     </span>
                     {isActive && (
-                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
+                        <Check className="size-3" />
                         Active
                       </span>
                     )}
                   </div>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="font-mono text-xs text-muted-foreground">
                     {meta ? `${meta.maskedKey} · ${meta.model}` : "No key"}
                   </span>
                 </div>
 
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-1.5">
                   <Label htmlFor={`${provider}-key`}>API key</Label>
                   <Input
                     id={`${provider}-key`}
@@ -227,28 +231,31 @@ const Settings = () => {
                   />
                 </div>
 
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-1.5">
                   <Label htmlFor={`${provider}-model`}>Model</Label>
-                  <select
-                    id={`${provider}-model`}
-                    className="border-input h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-                    value={draft.model}
-                    onChange={(e) =>
-                      handleModelChange(provider, e.target.value)
-                    }
-                  >
-                    {providerModels.length === 0 && (
-                      <option value="">No models available</option>
-                    )}
-                    {providerModels.map((model) => (
-                      <option key={model} value={model}>
-                        {model}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select
+                      id={`${provider}-model`}
+                      className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full appearance-none rounded-md border px-3 py-1 pr-9 text-sm shadow-xs outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+                      value={draft.model}
+                      onChange={(e) =>
+                        handleModelChange(provider, e.target.value)
+                      }
+                    >
+                      {providerModels.length === 0 && (
+                        <option value="">No models available</option>
+                      )}
+                      {providerModels.map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="text-muted-foreground pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2" />
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 pt-1">
                   <Button
                     size="sm"
                     disabled={isBusy}
@@ -267,6 +274,7 @@ const Settings = () => {
                   <Button
                     size="sm"
                     variant={isActive ? "secondary" : "ghost"}
+                    className="ml-auto"
                     disabled={busy === "active" || !meta || isActive}
                     onClick={() => handleSetActive(provider)}
                   >
