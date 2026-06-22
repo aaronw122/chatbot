@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useSettings } from "@/context/settingsContext";
+import { MobileMenuButton } from "@/components/mobileMenuButton";
 import services from "../services/index";
 import {
   PROVIDERS,
@@ -111,7 +112,8 @@ const ChatHeader = () => {
   // settingsContext open handler, same surface the 409 gate uses).
   if (!hasAnyKey) {
     return (
-      <header className="flex h-14 items-center border-b border-border bg-background px-4">
+      <header className="flex h-14 items-center gap-2 border-b border-border bg-background px-4">
+        <MobileMenuButton />
         <button
           type="button"
           onClick={openSettings}
@@ -130,6 +132,7 @@ const ChatHeader = () => {
 
   return (
     <header className="flex h-14 items-center gap-3 border-b border-border bg-background px-4">
+      <MobileMenuButton />
       <DropdownMenu>
         <DropdownMenuTrigger
           disabled={switching}
