@@ -15,6 +15,7 @@ function App() {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-6">
       <div className="flex flex-col items-center gap-1">
+        <img src="/logo.png" alt="easybranch logo" className="h-24 w-auto" />
         <h1 className="text-center text-6xl font-bold text-primary">easybranch</h1>
         <h5 className="text-center text-muted-foreground">
           forking made easy

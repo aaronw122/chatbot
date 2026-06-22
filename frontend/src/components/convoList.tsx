@@ -34,9 +34,12 @@ const ConvoList = () => {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="gap-3 px-3 pt-3">
-        <h1 className="px-1 text-lg font-bold tracking-tight text-primary group-data-[collapsible=icon]:hidden">
-          easybranch
-        </h1>
+        <div className="flex items-center gap-2 px-1">
+          <img src="/logo.png" alt="" className="size-6 w-auto shrink-0" />
+          <h1 className="text-lg font-bold tracking-tight text-primary group-data-[collapsible=icon]:hidden">
+            easybranch
+          </h1>
+        </div>
         <NewChat />
       </SidebarHeader>
       <SidebarContent>
