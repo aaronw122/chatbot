@@ -12,10 +12,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronsUpDown } from "lucide-react";
+import { ChevronsUpDown, LogOut, Settings as SettingsIcon } from "lucide-react";
 import Settings from "./settings";
 import { useSettings } from "@/context/settingsContext";
 
@@ -28,15 +27,14 @@ export const Profile = () => {
 
   const navigate = useNavigate();
 
-  if (isPending) return <p>Loading...</p>;
+  if (isPending) {
+    return (
+      <p className="px-2 py-1.5 text-sm text-muted-foreground">Loading…</p>
+    );
+  }
+
   if (session) {
-    const name = session.user.name;
-
-    console.log("name", name);
-
-    firstLetter = name.charAt(0).toUpperCase();
-
-    console.log("first letter", firstLetter);
+    firstLetter = session.user.name.charAt(0).toUpperCase();
   }
 
   const logOut = async () => {
@@ -54,38 +52,39 @@ export const Profile = () => {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               {session ? (
-                <div className="flex flex-row items-center">
-                  <Avatar className="h-8 w-8 rounded-lg">
-                    <AvatarFallback className="rounded-lg">
+                <>
+                  <Avatar className="size-8 rounded-full">
+                    <AvatarFallback className="rounded-full bg-primary text-sm text-primary-foreground">
                       {firstLetter}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="grid flex-1 text-left text-sm leading-tight ml-2 justify-center items-center">
+                  <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">
                       {session.user.name}
                     </span>
-                    <span className="truncate text-xs">
+                    <span className="truncate text-xs text-muted-foreground">
                       {session.user.email}
                     </span>
                   </div>
-                  <ChevronsUpDown className="ml-3 size-4" />
-                </div>
+                  <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
+                </>
               ) : (
                 <div />
               )}
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg shadow-md"
             side={isMobile ? "bottom" : "right"}
             align="end"
             sideOffset={4}
           >
-            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => settings?.openSettings()}>
+              <SettingsIcon className="size-4" />
               Settings
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => logOut()}>
+            <DropdownMenuItem variant="destructive" onClick={() => logOut()}>
+              <LogOut className="size-4" />
               Log out
             </DropdownMenuItem>
           </DropdownMenuContent>

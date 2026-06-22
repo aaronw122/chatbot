@@ -9,16 +9,12 @@ import {
   SidebarHeader,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
+  SidebarMenu,
 } from "./ui/sidebar";
 
 import { useConvo } from "@/context/convoContext";
 import { Profile } from "./profile";
-
-//state: conversations in array format, mapped using the id as key
-// onClick, take them to a given session depending on convoId
-// child comopnent convoTitle to hold title + onclick
-// useEffect to generate conversations on render v
-// for now assume userId === 1, in the future we will need to do something else
 
 const ConvoList = () => {
   const convo = useConvo();
@@ -36,36 +32,36 @@ const ConvoList = () => {
   }, [session, setConvos]);
 
   return (
-    <div className="h-full">
-      <div className="flex flex-col h-full">
-        <Sidebar collapsible="icon">
-          <SidebarHeader>
-            <div className="flex flex-col gap-2">
-              <h4>EasyBranch</h4>
-              <NewChat />
-            </div>
-          </SidebarHeader>
-          <SidebarContent>
-            {convos !== null ? (
-              <div className="flex flex-col">
-                {!convos ? (
-                  <p>no convos yet.</p>
-                ) : (
-                  convos.map((el: Conversation) => (
-                    <ConvoTitle key={el.id} title={el.title} id={el.id} />
-                  ))
-                )}
-              </div>
-            ) : (
-              <p> loading... </p>
-            )}
-          </SidebarContent>
-          <SidebarFooter>
-            <Profile />
-          </SidebarFooter>
-        </Sidebar>
-      </div>
-    </div>
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="gap-3 px-3 pt-3">
+        <h1 className="px-1 text-lg font-bold tracking-tight text-primary group-data-[collapsible=icon]:hidden">
+          forklet
+        </h1>
+        <NewChat />
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup>
+          {convos === null ? (
+            <p className="px-2 py-1.5 text-sm text-muted-foreground">
+              Loading…
+            </p>
+          ) : convos.length === 0 ? (
+            <p className="px-2 py-1.5 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
+              No conversations yet.
+            </p>
+          ) : (
+            <SidebarMenu>
+              {convos.map((el: Conversation) => (
+                <ConvoTitle key={el.id} title={el.title} id={el.id} />
+              ))}
+            </SidebarMenu>
+          )}
+        </SidebarGroup>
+      </SidebarContent>
+      <SidebarFooter>
+        <Profile />
+      </SidebarFooter>
+    </Sidebar>
   );
 };
 
