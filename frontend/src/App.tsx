@@ -13,20 +13,14 @@ function App() {
   if (isPending) return <p>Loading...</p>;
 
   return (
-    <div className="flex flex-col justify-center h-full flex-1 lg:mx-50 md:mx-20 sm:mx-15 gap-1 pb-40">
-      {session ? (
-        <div className="flex flex-col items-center w-full">
-          <h1 className="text-center text-6xl font-bold">forklet</h1>
-          <h5 className="text-center pb-5">grow your curiosity.</h5>
-          <HomeInput />
-        </div>
-      ) : (
-        <div className="flex flex-col items-center w-full">
-          <h1 className="text-center text-6xl font-bold">forklet</h1>
-          <h5 className="text-center pb-5">grow your curiosity.</h5>
-          <SignIn />
-        </div>
-      )}
+    <div className="flex h-full w-full flex-col items-center justify-center gap-6">
+      <div className="flex flex-col items-center gap-1">
+        <h1 className="text-center text-6xl font-bold text-primary">forklet</h1>
+        <h5 className="text-center text-muted-foreground">
+          grow your curiosity.
+        </h5>
+      </div>
+      <div className="w-full">{session ? <HomeInput /> : <SignIn />}</div>
     </div>
   );
 }

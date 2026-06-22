@@ -1,11 +1,9 @@
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Send } from "lucide-react";
 import { useConvo } from "@/context/convoContext";
 import { useNavigate } from "react-router";
 import services from "../services/index";
 import Chats from "./messageHistory";
 import { useMessage } from "@/context/messageContext";
+import Composer from "./composer";
 
 const HomeInput = () => {
   const convo = useConvo();
@@ -27,7 +25,6 @@ const HomeInput = () => {
   } = message;
 
   const createConversation = async () => {
-    console.log("message sent", newMessage);
     const optimisticMessage = [
       {
         id: "123",
@@ -41,7 +38,6 @@ const HomeInput = () => {
     const res = await services.createConversation({
       content: newMessage,
     });
-    console.log("optimistic", optimisticMessage);
     navigate(`/chat/${res[0].convoId}`);
     setNewMessage("");
     const updatedConvos = await services.getConversations();
@@ -53,19 +49,16 @@ const HomeInput = () => {
       {optimisticMsg ? (
         <Chats history={optimisticMsg} />
       ) : (
-        <div className="flex items-center justify-center gap-2 w-full">
-          <Textarea
-            placeholder="ask away"
-            className="min-h-0 rounded-lg resize-none border-2 shadow-none focus-visible:ring-1"
-            value={newMessage}
-            onChange={handleMsgChange}
-          >
-            {" "}
-          </Textarea>
-          <Button className="rounded-lg" onClick={() => createConversation()}>
-            <Send />
-          </Button>
-        </div>
+        <Composer
+          placeholder="ask away"
+          value={newMessage}
+          onChange={(value) =>
+            handleMsgChange({
+              target: { value },
+            } as React.ChangeEvent<HTMLTextAreaElement>)
+          }
+          onSubmit={createConversation}
+        />
       )}
     </div>
   );
