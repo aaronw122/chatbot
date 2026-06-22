@@ -340,6 +340,18 @@ app.delete('/api/keys/:provider', async (req: Request, res: Response) => {
   }
 })
 
+// SPA fallback: client-side routes (e.g. /chat/:id, /signup) are owned by
+// react-router in the browser. On a hard reload or direct link, the request
+// reaches this server instead — serve index.html so the SPA boots and routes.
+// Registered AFTER all API/static handlers so it only catches unmatched routes;
+// unknown /api paths still 404 as JSON rather than returning HTML.
+app.get(/.*/, (req: Request, res: Response) => {
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ error: "not found" })
+  }
+  res.sendFile(path.join(import.meta.dirname, 'dist', 'index.html'))
+})
+
 const PORT = 3000
 
 // Export the configured app + storage so tests can drive routes via supertest
