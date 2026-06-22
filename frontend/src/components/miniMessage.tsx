@@ -1,12 +1,13 @@
 import type { MessageProps } from "../../../types/types";
-import { Card } from "./ui/card";
 import Markdown from "react-markdown";
 
 const MiniMessage = ({ role, content }: MessageProps) => {
   return role === "user" ? (
-    <Card className="ml-auto px-3.5">{content}</Card>
+    <div className="ml-auto max-w-[80%] rounded-2xl bg-card px-3.5 py-2 text-sm text-card-foreground whitespace-pre-wrap">
+      {content}
+    </div>
   ) : (
-    <div className="my-2 prose prose-sm dark:prose-invert max-w-none">
+    <div className="prose prose-sm prose-neutral max-w-none text-foreground">
       <Markdown>{content}</Markdown>
     </div>
   );

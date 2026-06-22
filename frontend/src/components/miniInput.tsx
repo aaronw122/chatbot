@@ -1,5 +1,3 @@
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
 import { Send } from "lucide-react";
 import services from "../services/index";
 import { useMini } from "@/context/miniContext";
@@ -19,6 +17,9 @@ const MiniInput = () => {
 
   const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     setMiniMessage(event.target.value);
+    const el = event.target;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
   };
 
   const handleSend = async () => {
@@ -56,11 +57,14 @@ const MiniInput = () => {
     }
   };
 
+  const disabled = !miniMessage || miniMessage.trim().length === 0;
+
   return (
-    <div className="flex items-center gap-2">
-      <Textarea
-        placeholder="ask a follow-up..."
-        className="min-h-0 rounded-lg resize-none border-2 shadow-none focus-visible:ring-1 text-sm"
+    <div className="flex items-end gap-2 rounded-2xl border border-input bg-background p-2 shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring">
+      <textarea
+        placeholder="ask a follow-up"
+        rows={1}
+        className="max-h-32 flex-1 resize-none bg-transparent px-1 py-1 text-sm text-foreground outline-none placeholder:text-muted-foreground"
         value={miniMessage ?? ""}
         onChange={handleChange}
         onKeyDown={(e) => {
@@ -70,9 +74,15 @@ const MiniInput = () => {
           }
         }}
       />
-      <Button size="sm" className="rounded-lg" onClick={handleSend}>
-        <Send className="h-4 w-4" />
-      </Button>
+      <button
+        type="button"
+        onClick={handleSend}
+        disabled={disabled}
+        aria-label="Send"
+        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-50"
+      >
+        <Send className="size-4" />
+      </button>
     </div>
   );
 };
