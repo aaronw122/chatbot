@@ -6,10 +6,8 @@ type MessageHistoryProps = {
 };
 
 const MessageHistory = ({ history }: MessageHistoryProps) => {
-  console.log("history from MessageHistory", history);
-
   return (
-    <div className="flex flex-col pb-15">
+    <div className="flex flex-col gap-6">
       {history.map((el) => (
         <Message key={el.id} content={el.content} role={el.role} id={el.id} />
       ))}

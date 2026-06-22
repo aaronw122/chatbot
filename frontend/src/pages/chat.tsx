@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import MessageHistory from "../components/messageHistory";
 import Input from "../components/input";
 import MiniWindow from "../components/miniWindow";
+import ChatHeader from "@/components/chatHeader";
 import { useParams } from "react-router";
 import { useConvo } from "@/context/convoContext";
 
@@ -31,24 +32,29 @@ const Session = () => {
 
   //then, on subsequent chat messages, we update
 
-  //will have new deps in future,
+  // Centering + scroll container live in the shell (main.tsx) per DESIGN.md.
+  // This page renders content-only: a column-height flex with a header, a
+  // message list, and the bottom-pinned composer.
   return (
-    <div>
+    <div className="flex h-full flex-col">
+      <ChatHeader />
       {chatHistory ? (
-        <div className="flex flex-col h-full pb-5 mx-auto w-full max-w-3xl px-4">
-          <div className="flex-1 overflow-y-auto my-15">
+        <>
+          <div className="flex-1 overflow-y-auto py-6">
             <MessageHistory history={chatHistory} />
           </div>
-          <Input
-            sendMessage={sendMessage}
-            newMessage={newMessage}
-            handleMsgChange={handleMsgChange}
-            id={id!}
-          />
+          <div className="pb-4 pt-2">
+            <Input
+              sendMessage={sendMessage}
+              newMessage={newMessage}
+              handleMsgChange={handleMsgChange}
+              id={id!}
+            />
+          </div>
           <MiniWindow />
-        </div>
+        </>
       ) : (
-        <p> loading </p>
+        <p className="text-muted-foreground py-6 text-sm">loading</p>
       )}
     </div>
   );

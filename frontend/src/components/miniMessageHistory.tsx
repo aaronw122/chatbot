@@ -12,7 +12,7 @@ const MessageHistory = () => {
   if (!miniChatHistory) return null;
 
   return (
-    <div className="flex flex-col pb-15">
+    <div className="flex flex-col gap-4 pb-4">
       {miniChatHistory.map((el: CleanMessage) => (
         <MiniMessage
           key={el.id}
