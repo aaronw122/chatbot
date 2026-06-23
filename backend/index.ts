@@ -184,18 +184,31 @@ app.post('/conversations', async (req: Request, res: Response) => {
       return res.status(404).json({error: "unauthorized"})
     }
 
-    const { content, save } = req.body
-    // De-LLM'd (Phase 2): create the convo + persist the user's first message
-    // only. The streamed first assistant reply is produced by the streaming
-    // POST /messages/:id path (with the {firstReply:true} marker), so we do NOT
-    // call the LLM here — doing so would double-generate the first reply.
+    const { content, save, withReply } = req.body
+    // De-LLM'd (Phase 2): by default create the convo + persist the user's first
+    // message only. The streamed first assistant reply is produced by the
+    // streaming POST /messages/:id path (with the {firstReply:true} marker), so
+    // the main-chat (homeInput) path does NOT call the LLM here — doing so would
+    // double-generate the first reply.
     const newConvo = await storage.createConversation({ content: content, userId: session.user.id, save: save })
     const userMsg = await storage.addMessage({ convoId: newConvo.id, content: content, role: "user" })
+
+    // Opt-in inline reply: the mini-window (miniInput) is NON-streaming and
+    // expects [userMsg, assistantReply] back from create. When `withReply` is
+    // truthy, generate + persist the assistant reply here (the pre-streaming
+    // shape). Preserve the NoKeyError → 409 gate so the mini-window surfaces the
+    // key gate too.
+    if (withReply) {
+      await getAIResponse(newConvo.id, session.user.id)
+    }
 
     const convoWithRes = await storage.getMessages({convoId: newConvo.id})
     res.json(convoWithRes)
   }
   catch (error) {
+    if (error instanceof NoKeyError) {
+      return res.status(409).json({ error: "no_api_key", message: "Add an API key in Settings to start chatting." })
+    }
     console.error('failed to add conversation', error)
     res.status(500).json({error: "server error"})
   }

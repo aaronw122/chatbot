@@ -278,3 +278,56 @@ describe("A.2 — POST /conversations is de-LLM'd (no assistant reply)", () => {
     expect(body[0]!.content).toBe("just the user message");
   });
 });
+
+describe("A.2 — POST /conversations { withReply:true } (mini-window opt-in reply)", () => {
+  it("with withReply:true → returns [userMsg, assistantReply] and persists the assistant message", async () => {
+    await configureKey();
+    deltas = ["Hello", ", ", "world"]; // generateReply joins these → "Hello, world"
+    const res = await fetch(baseUrl + "/conversations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content: "mini first message", withReply: true }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ convoId: string; role: string; content: string }>;
+    // Pre-streaming shape: user message + inline (non-streaming) assistant reply.
+    expect(body).toHaveLength(2);
+    expect(body[0]!.role).toBe("user");
+    expect(body[0]!.content).toBe("mini first message");
+    expect(body[1]!.role).toBe("assistant");
+    expect(body[1]!.content).toBe("Hello, world");
+
+    // Assistant reply was persisted (not just returned).
+    const msgs = await storage.getMessages({ convoId: body[0]!.convoId });
+    const assistant = msgs.filter((m) => m.role === "assistant");
+    expect(assistant).toHaveLength(1);
+    expect(assistant[0]!.content).toBe("Hello, world");
+  });
+
+  it("without the flag → NO assistant reply generated (single user message)", async () => {
+    await configureKey();
+    const res = await fetch(baseUrl + "/conversations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content: "no reply please" }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ role: string; content: string }>;
+    expect(body).toHaveLength(1);
+    expect(body[0]!.role).toBe("user");
+    const assistant = body.filter((m) => m.role === "assistant");
+    expect(assistant).toHaveLength(0);
+  });
+
+  it("withReply:true but no active key → 409 no_api_key gate (mini-window surfaces key gate)", async () => {
+    // No key configured for USER → getAIResponse throws NoKeyError.
+    const res = await fetch(baseUrl + "/conversations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content: "need a key", withReply: true }),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("no_api_key");
+  });
+});

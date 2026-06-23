@@ -37,6 +37,7 @@ const MiniInput = () => {
       //this is where we change to reference new express function, and send over agent instead.
       const messages = await services.createConversation({
         content: contextMessage,
+        withReply: true,
       });
 
       //then right after we add the contextMessage as a followup.
