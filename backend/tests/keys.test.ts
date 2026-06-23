@@ -230,6 +230,101 @@ describe("POST /api/keys/active (single active)", () => {
   });
 });
 
+describe("POST /api/keys/active (A2 — model update)", () => {
+  it("switching model for an existing provider persists (getActiveKey returns new model)", async () => {
+    // openai configured + active with gpt-4o.
+    await api
+      .post("/api/keys")
+      .send({ provider: "openai", model: "gpt-4o", apiKey: "sk-model-1111" });
+
+    // Switch the active openai model to gpt-4o-mini without re-entering the key.
+    const res = await api
+      .post("/api/keys/active")
+      .send({ provider: "openai", model: "gpt-4o-mini" });
+    expect(res.status).toBe(200);
+
+    // The chat path reads getActiveKey — it must see the new model.
+    const active = await storage.getActiveKey({ userId: USER });
+    expect(active?.provider).toBe("openai");
+    expect(active?.model).toBe("gpt-4o-mini");
+
+    // The masked key is unchanged (encrypted_key was never touched).
+    const list = await api.get("/api/keys");
+    const openai = list.body.find((k: any) => k.provider === "openai");
+    expect(openai.model).toBe("gpt-4o-mini");
+    expect(openai.maskedKey).toBe("sk-…1111");
+  });
+
+  it("switches provider AND model in one call", async () => {
+    await api
+      .post("/api/keys")
+      .send({ provider: "openai", model: "gpt-4o", apiKey: "sk-both-1111" }); // active (first)
+    await api
+      .post("/api/keys")
+      .send({ provider: "anthropic", model: "claude-sonnet-4-5-20250929", apiKey: "sk-both-2222" });
+
+    const res = await api
+      .post("/api/keys/active")
+      .send({ provider: "anthropic", model: "claude-sonnet-4-5-20250929" });
+    expect(res.status).toBe(200);
+
+    const active = await storage.getActiveKey({ userId: USER });
+    expect(active?.provider).toBe("anthropic");
+    expect(active?.model).toBe("claude-sonnet-4-5-20250929");
+  });
+
+  it("invalid model → 400 (and does not change stored model)", async () => {
+    await api
+      .post("/api/keys")
+      .send({ provider: "openai", model: "gpt-4o", apiKey: "sk-bad-1111" });
+
+    const res = await api
+      .post("/api/keys/active")
+      .send({ provider: "openai", model: "not-a-model" });
+    expect(res.status).toBe(400);
+
+    // Stored model is untouched by the rejected request.
+    const active = await storage.getActiveKey({ userId: USER });
+    expect(active?.model).toBe("gpt-4o");
+  });
+
+  it("404 when switching model for an unconfigured provider (no keyless row created)", async () => {
+    const res = await api
+      .post("/api/keys/active")
+      .send({ provider: "anthropic", model: "claude-sonnet-4-5-20250929" });
+    expect(res.status).toBe(404);
+
+    // No keyless row was created.
+    const list = await api.get("/api/keys");
+    expect(list.body).toHaveLength(0);
+  });
+
+  it("401 when unauthenticated (with model)", async () => {
+    unauth();
+    const res = await api
+      .post("/api/keys/active")
+      .send({ provider: "openai", model: "gpt-4o-mini" });
+    expect(res.status).toBe(401);
+  });
+
+  it("back-compat: { provider }-only call still flips active without a model", async () => {
+    await api
+      .post("/api/keys")
+      .send({ provider: "openai", model: "gpt-4o", apiKey: "sk-compat-1111" }); // active (first)
+    await api
+      .post("/api/keys")
+      .send({ provider: "anthropic", model: "claude-sonnet-4-5-20250929", apiKey: "sk-compat-2222" });
+
+    const res = await api.post("/api/keys/active").send({ provider: "anthropic" });
+    expect(res.status).toBe(200);
+
+    const active = await storage.getActiveKey({ userId: USER });
+    expect(active?.provider).toBe("anthropic");
+    // Model preserved from the original addKey (not cleared by the model-less call).
+    expect(active?.model).toBe("claude-sonnet-4-5-20250929");
+  });
+});
+
 describe("DELETE /api/keys/:provider (Med7 auto-promote)", () => {
   it("promotes the remaining key when the active one is deleted", async () => {
     await api

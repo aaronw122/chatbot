@@ -37,7 +37,10 @@ export interface Storage {
   deleteApiKey({ userId, provider }: { userId: string; provider: Provider }): Promise<void>
 
   // Set the chosen provider active; clear is_active on all others for the user.
-  setActiveProvider({ userId, provider }: { userId: string; provider: Provider }): Promise<void>
+  // When `model` is provided, also persist it onto the existing (userId, provider)
+  // row — the same row getActiveKey reads — without re-encrypting/touching the key.
+  // Throws if no key row exists for (userId, provider).
+  setActiveProvider({ userId, provider, model }: { userId: string; provider: Provider; model?: string }): Promise<void>
 
   // Internal — returns the decrypted active key for the request path, or null.
   getActiveKey({ userId }: { userId: string }): Promise<ActiveKey | null>
@@ -251,10 +254,15 @@ export class InMemoryStorage implements Storage {
     }
   }
 
-  async setActiveProvider({ userId, provider }: { userId: string; provider: Provider }): Promise<void> {
+  async setActiveProvider({ userId, provider, model }: { userId: string; provider: Provider; model?: string }): Promise<void> {
     const target = this.apiKeys.get(this.keyOf(userId, provider))
     if (!target) {
       throw new Error(`no key for provider "${provider}"`)
+    }
+    // Persist the chosen model onto the existing row (never touches encryptedKey).
+    if (model !== undefined) {
+      target.model = model
+      target.updatedAt = new Date().toISOString()
     }
     for (const row of this.apiKeys.values()) {
       if (row.userId === userId) {
@@ -500,7 +508,7 @@ export class SupabaseStorage implements Storage {
     }
   }
 
-  async setActiveProvider({ userId, provider }: { userId: string; provider: Provider }): Promise<void> {
+  async setActiveProvider({ userId, provider, model }: { userId: string; provider: Provider; model?: string }): Promise<void> {
     // Ensure the target key exists for this user.
     const { data: target, error: targetError } = await supabaseAdmin
       .from('user_api_keys')
@@ -520,9 +528,16 @@ export class SupabaseStorage implements Storage {
 
     if (clearError) throw clearError
 
+    // Set the chosen provider active and, when provided, persist the new model
+    // onto the same row getActiveKey reads. encrypted_key is never touched.
+    const update: { is_active: true; model?: string; updated_at?: string } = { is_active: true }
+    if (model !== undefined) {
+      update.model = model
+      update.updated_at = new Date().toISOString()
+    }
     const { error: setError } = await supabaseAdmin
       .from('user_api_keys')
-      .update({ is_active: true })
+      .update(update)
       .eq('user_id', userId)
       .eq('provider', provider)
 

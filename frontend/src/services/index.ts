@@ -82,8 +82,13 @@ const addKey = async (keyReq: { provider: Provider, model: string, apiKey: strin
   return response.data
 }
 
-const setActiveProvider = async (provider: Provider): Promise<void> => {
-  const response = await axios.post(`${baseURL}/api/keys/active`, { provider })
+// Switch the active provider and, optionally, its model in one call. `model` is
+// optional for back-compat: the existing 1-arg call in settings.tsx keeps flipping
+// the active provider only. When given, the backend validates the model and
+// persists it onto the existing key row (no key re-entry) — this is what makes the
+// header model switcher (B4) actually persist the selection.
+const setActiveProvider = async (provider: Provider, model?: string): Promise<void> => {
+  const response = await axios.post(`${baseURL}/api/keys/active`, { provider, model })
   return response.data
 }
 

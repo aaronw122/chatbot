@@ -271,7 +271,10 @@ app.post('/api/keys', async (req: Request, res: Response) => {
   }
 })
 
-// POST /api/keys/active — set the active provider.
+// POST /api/keys/active — set the active provider and, optionally, its model.
+// `model` is optional for back-compat: existing 1-arg { provider } calls still
+// flip the active provider. When given, the model is validated here (400 on
+// failure) and persisted onto the existing key row — no key re-entry required.
 app.post('/api/keys/active', async (req: Request, res: Response) => {
   try {
     const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) })
@@ -279,9 +282,19 @@ app.post('/api/keys/active', async (req: Request, res: Response) => {
       return res.status(401).json({ error: "unauthorized" })
     }
 
-    const { provider } = req.body ?? {}
+    const { provider, model } = req.body ?? {}
     if (!isProvider(provider)) {
       return res.status(400).json({ error: "invalid provider" })
+    }
+    if (model !== undefined) {
+      if (typeof model !== 'string') {
+        return res.status(400).json({ error: "invalid model" })
+      }
+      try {
+        assertModelAllowed(provider, model)
+      } catch {
+        return res.status(400).json({ error: "model not allowed" })
+      }
     }
 
     const userId = session.user.id
@@ -290,7 +303,7 @@ app.post('/api/keys/active', async (req: Request, res: Response) => {
       return res.status(404).json({ error: "not found" })
     }
 
-    await storage.setActiveProvider({ userId, provider })
+    await storage.setActiveProvider({ userId, provider, model })
     res.json({ ok: true })
   }
   catch (error) {
@@ -325,6 +338,18 @@ app.delete('/api/keys/:provider', async (req: Request, res: Response) => {
     console.error('failed to delete api key', error)
     res.status(500).json({ error: "server error" })
   }
+})
+
+// SPA fallback: client-side routes (e.g. /chat/:id, /signup) are owned by
+// react-router in the browser. On a hard reload or direct link, the request
+// reaches this server instead — serve index.html so the SPA boots and routes.
+// Registered AFTER all API/static handlers so it only catches unmatched routes;
+// unknown /api paths still 404 as JSON rather than returning HTML.
+app.get(/.*/, (req: Request, res: Response) => {
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ error: "not found" })
+  }
+  res.sendFile(path.join(import.meta.dirname, 'dist', 'index.html'))
 })
 
 const PORT = 3000
