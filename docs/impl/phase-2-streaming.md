@@ -1,6 +1,7 @@
 # Phase 2 — Streaming responses
 
 Revision: 3 (post-review round 2)
+Status: IMPLEMENTED on `feat/phase-2-streaming-integration` (Buckets A + B; 50 backend tests pass, frontend build clean). Integration fix: mini-window inline reply restored via opt-in `withReply` on `/conversations`. Bucket C (deploy + loopy validation) pending.
 
 ## Goal
 
