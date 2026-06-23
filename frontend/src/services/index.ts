@@ -26,14 +26,23 @@ export const onNoApiKey = (handler: NoApiKeyHandler | null) => {
   noApiKeyHandler = handler
 }
 
+// Shared no-key trigger (M2). BOTH the axios interceptor (non-streaming paths)
+// and the native-fetch streaming path (streamMessage) funnel through this so the
+// Settings dialog opens identically. A bare `throw NoApiKeyError` would NOT open
+// Settings — only invoking the registered handler does.
+export const triggerNoApiKey = (message?: string) => {
+  const noKeyError = new NoApiKeyError(message)
+  if (noApiKeyHandler) noApiKeyHandler(noKeyError)
+  return noKeyError
+}
+
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error?.response?.status
     const data = error?.response?.data
     if (status === 409 && data?.error === 'no_api_key') {
-      const noKeyError = new NoApiKeyError(data?.message)
-      if (noApiKeyHandler) noApiKeyHandler(noKeyError)
+      const noKeyError = triggerNoApiKey(data?.message)
       return Promise.reject(noKeyError)
     }
     return Promise.reject(error)
@@ -58,6 +67,94 @@ const getMessages = async (convoId : string) => {
 const sendMessage = async (newReq: { content: string, role: "user" | "assistant", convoId: string }) => {
   const response = await axios.post(`${baseURL}/messages/${newReq.convoId}`, newReq)
   return response.data
+}
+
+// --- Streaming send (B.1) ---
+// Streams an assistant reply over POST /messages/:convoId using native `fetch`
+// (axios cannot stream in the browser). Two request shapes match the backend
+// contract:
+//   - normal send:      { content, role:'user', convoId }
+//   - first reply after /conversations create: { firstReply: true } (no content)
+// The success body is an NDJSON stream (application/x-ndjson); non-ok responses
+// (409/401/404/500) are plain JSON, so we fork on `res.ok` and only read the
+// body as a stream when ok.
+export type StreamOpts = {
+  content?: string
+  firstReply?: boolean
+  onChunk: (text: string) => void
+  onError: () => void
+  onDone: () => void
+  signal?: AbortSignal
+}
+
+const streamMessage = async (
+  convoId: string,
+  { content, firstReply, onChunk, onError, onDone, signal }: StreamOpts,
+): Promise<void> => {
+  const body = firstReply
+    ? { firstReply: true }
+    : { content, role: 'user', convoId }
+
+  const res = await fetch(`${baseURL}/messages/${convoId}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  })
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null)
+    if (res.status === 409 && errBody?.error === 'no_api_key') {
+      // Same handler the axios interceptor fires — opens Settings.
+      triggerNoApiKey(errBody?.message)
+      return
+    }
+    throw new Error(errBody?.error ?? `stream failed: ${res.status}`)
+  }
+
+  if (!res.body) throw new Error('stream failed: no response body')
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  // Parse one complete NDJSON line, dispatching to the right callback.
+  const dispatch = (line: string) => {
+    const trimmed = line.trim()
+    if (!trimmed) return
+    let frame: { type?: string; text?: string }
+    try {
+      frame = JSON.parse(trimmed)
+    } catch {
+      // Skip malformed lines rather than tearing down the whole stream.
+      return
+    }
+    if (frame.type === 'chunk') {
+      onChunk(frame.text ?? '')
+    } else if (frame.type === 'error') {
+      onError()
+    } else if (frame.type === 'done') {
+      onDone()
+    }
+  }
+
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    // Split on newlines; keep the trailing partial line in the buffer.
+    let newlineIdx = buffer.indexOf('\n')
+    while (newlineIdx !== -1) {
+      const line = buffer.slice(0, newlineIdx)
+      buffer = buffer.slice(newlineIdx + 1)
+      dispatch(line)
+      newlineIdx = buffer.indexOf('\n')
+    }
+  }
+  // Flush any trailing complete frame left without a terminating newline.
+  buffer += decoder.decode()
+  if (buffer.trim()) dispatch(buffer)
 }
 
 const resetMessages = async () => {
@@ -100,6 +197,7 @@ const deleteKey = async (provider: Provider): Promise<void> => {
 export default {
   getMessages,
   sendMessage,
+  streamMessage,
   resetMessages,
   getConversations,
   createConversation,
