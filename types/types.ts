@@ -33,6 +33,30 @@ export interface CreateConversation {
 
 export type MessageType = Anthropic.MessageParam & { convoId: string }
 
+// Branch-anchored highlight. Anchored by text offsets into a source assistant
+// message's rendered plain text; `quote` is the highlighted substring (model
+// context + tooltip only, never for anchoring). `branchConvoId` links to the
+// follow-up conversation the highlight opened.
+export interface Highlight {
+  id: string;
+  messageId: string;
+  branchConvoId: string;
+  startOffset: number;
+  endOffset: number;
+  quote: string;
+  userId: string | null;
+  createdAt: string;
+}
+
+export interface CreateHighlight {
+  messageId: string;
+  branchConvoId: string;
+  startOffset: number;
+  endOffset: number;
+  quote: string;
+  userId?: string | null;
+}
+
 export type Content = Anthropic.MessageParam["content"]
 
 // BYOK (Phase 1) — plain literal types. Do NOT add runtime/value imports of the
