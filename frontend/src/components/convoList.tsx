@@ -32,7 +32,7 @@ const ConvoList = () => {
   }, [session, setConvos]);
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="offcanvas">
       <SidebarHeader className="gap-3 px-3 pt-3">
         <div className="flex items-center gap-2 px-1">
           <img src="/logo.png" alt="" className="size-6 w-auto shrink-0" />
