@@ -16,11 +16,11 @@
 create table if not exists highlights (
   id uuid primary key default gen_random_uuid(),
   message_id uuid not null references messages(id) on delete cascade,
-  branch_convo_id uuid not null references conversations(id) on delete cascade,
-  start_offset int not null,
+  branch_convo_id uuid not null unique references conversations(id) on delete cascade,
+  start_offset int not null check (start_offset >= 0),
   end_offset int not null,
   quote text not null,
-  user_id text,
+  user_id text not null,
   created_at timestamptz not null default now(),
   check (end_offset > start_offset)
 );

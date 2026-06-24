@@ -31,12 +31,10 @@ export interface CreateConversation {
   save?: true | false;
 }
 
-export type MessageType = Anthropic.MessageParam & { convoId: string }
-
-// Branch-anchored highlight. Anchored by text offsets into a source assistant
-// message's rendered plain text; `quote` is the highlighted substring (model
-// context + tooltip only, never for anchoring). `branchConvoId` links to the
-// follow-up conversation the highlight opened.
+// A persisted branch-anchored highlight. Offsets are indices into the source
+// message's rendered plain text (text-node concatenation, document order — see
+// frontend/src/lib/textOffsets.ts). `branchConvoId` is the conversation the
+// highlight opens.
 export interface Highlight {
   id: string;
   messageId: string;
@@ -47,6 +45,18 @@ export interface Highlight {
   userId: string | null;
   createdAt: string;
 }
+
+// Request shape when creating a branch from a highlight. Sent to POST
+// /conversations alongside the typed question. Offsets + quote + messageId only
+// — the backend dereferences messageId for full-response model context.
+export interface HighlightRequest {
+  messageId: string;
+  startOffset: number;
+  endOffset: number;
+  quote: string;
+}
+
+export type MessageType = Anthropic.MessageParam & { convoId: string }
 
 export interface CreateHighlight {
   messageId: string;
@@ -85,6 +95,8 @@ export interface MessageProps {
   id?: string,
   content: string,
   role: "assistant" | "user",
+  // highlights anchored to this message (assistant only); rendered as marks
+  highlights?: Highlight[],
 }
 
 export type WebSocketMessage = | {
@@ -127,4 +139,18 @@ export type miniContext = {
   setSelectedText: React.Dispatch<React.SetStateAction<string | null>>,
   miniConvoId: string | null,
   setMiniConvoId: React.Dispatch<React.SetStateAction<string | null>>,
+  // --- branch-anchored highlights (set by the reply button before first send) ---
+  // source assistant message the pending highlight anchors to
+  sourceMessageId: string | null,
+  setSourceMessageId: React.Dispatch<React.SetStateAction<string | null>>,
+  // flat offsets of the pending highlight in that message's plain text
+  highlightRange: { start: number; end: number } | null,
+  setHighlightRange: React.Dispatch<
+    React.SetStateAction<{ start: number; end: number } | null>
+  >,
+  // the highlighted substring (model context + chip/tooltip), never anchoring
+  quote: string | null,
+  setQuote: React.Dispatch<React.SetStateAction<string | null>>,
+  highlightRevision: number,
+  notifyHighlightCreated: () => void,
 }

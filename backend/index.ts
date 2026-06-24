@@ -233,17 +233,53 @@ app.post('/conversations', async (req: Request, res: Response) => {
     // the message array (the frontend opens a mini-window from this shape).
     if (highlight) {
       const { messageId, startOffset, endOffset, quote } = highlight
+      const source = typeof messageId === 'string'
+        ? await storage.getMessage({ id: messageId })
+        : null
+      const sourceConvo = source
+        ? await storage.getConversation({ convoId: source.convoId })
+        : null
+      const validOffsets =
+        Number.isInteger(startOffset) &&
+        Number.isInteger(endOffset) &&
+        startOffset >= 0 &&
+        endOffset > startOffset &&
+        endOffset <= (source?.content.length ?? 0)
+      const validQuote =
+        typeof quote === 'string' &&
+        quote.trim().length > 0 &&
+        quote.length <= 10_000 &&
+        Boolean(source?.content.includes(quote))
+
+      if (
+        !source ||
+        source.role !== 'assistant' ||
+        !sourceConvo ||
+        sourceConvo.userId !== session.user.id ||
+        !validOffsets ||
+        !validQuote
+      ) {
+        return res.status(400).json({ error: "invalid highlight" })
+      }
+
       const branchConvo = await storage.createConversation({ content: content, userId: session.user.id, save: false })
-      await storage.addMessage({ convoId: branchConvo.id, content: content, role: "user" })
-      const created = await storage.createHighlight({
-        messageId,
-        branchConvoId: branchConvo.id,
-        startOffset,
-        endOffset,
-        quote,
-        userId: session.user.id,
-      })
-      return res.json({ convoId: branchConvo.id, highlightId: created.id })
+      try {
+        await storage.addMessage({ convoId: branchConvo.id, content: content, role: "user" })
+        const created = await storage.createHighlight({
+          messageId,
+          branchConvoId: branchConvo.id,
+          startOffset,
+          endOffset,
+          quote,
+          userId: session.user.id,
+        })
+        return res.json({ convoId: branchConvo.id, highlightId: created.id })
+      } catch (error) {
+        await storage.deleteConversation({ convoId: branchConvo.id }).catch((rollbackError) => {
+          console.error('failed to roll back branch conversation', rollbackError)
+        })
+        throw error
+      }
     }
 
     // De-LLM'd (Phase 2): by default create the convo + persist the user's first

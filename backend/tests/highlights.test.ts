@@ -256,6 +256,97 @@ describe("POST /conversations with highlight", () => {
     expect(await storage.getHighlightByBranch(body[0]!.convoId)).toBeNull();
   });
 
+  it("rejects a highlight whose source message belongs to another user", async () => {
+    const sourceConvo = await storage.createConversation({
+      content: "private source",
+      userId: "someone-else",
+    });
+    const sourceMsg = await storage.addMessage({
+      convoId: sourceConvo.id,
+      role: "assistant",
+      content: "private assistant response",
+    });
+
+    const res = await fetch(baseUrl + "/conversations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        content: "steal context",
+        highlight: {
+          messageId: sourceMsg.id,
+          startOffset: 0,
+          endOffset: 7,
+          quote: "private",
+        },
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await storage.getConversations({ userId: USER })).toEqual([]);
+  });
+
+  it("rejects malformed anchors and user-message sources", async () => {
+    const sourceConvo = await storage.createConversation({ content: "src", userId: USER });
+    const sourceMsg = await storage.addMessage({
+      convoId: sourceConvo.id,
+      role: "user",
+      content: "user-authored source",
+    });
+
+    const res = await fetch(baseUrl + "/conversations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        content: "invalid branch",
+        highlight: {
+          messageId: sourceMsg.id,
+          startOffset: -1,
+          endOffset: 100,
+          quote: "invented quote",
+        },
+      }),
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("keeps a branch out of the conversation list until promotion", async () => {
+    const sourceConvo = await storage.createConversation({ content: "src", userId: USER });
+    const sourceMsg = await storage.addMessage({
+      convoId: sourceConvo.id,
+      role: "assistant",
+      content: "highlight this response",
+    });
+    const createRes = await fetch(baseUrl + "/conversations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        content: "branch question",
+        highlight: {
+          messageId: sourceMsg.id,
+          startOffset: 0,
+          endOffset: 9,
+          quote: "highlight",
+        },
+      }),
+    });
+    const { convoId } = (await createRes.json()) as { convoId: string };
+
+    const before = await fetch(baseUrl + "/conversations");
+    const beforeBody = (await before.json()) as Array<{ id: string }>;
+    expect(beforeBody.some((convo) => convo.id === convoId)).toBe(false);
+
+    await fetch(baseUrl + "/conversations/" + convoId, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ save: true }),
+    });
+
+    const after = await fetch(baseUrl + "/conversations");
+    const afterBody = (await after.json()) as Array<{ id: string }>;
+    expect(afterBody.some((convo) => convo.id === convoId)).toBe(true);
+  });
+
   it("401 when unauthenticated", async () => {
     unauth();
     const res = await fetch(baseUrl + "/conversations", {

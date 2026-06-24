@@ -1,5 +1,6 @@
 import { Send } from "lucide-react";
 import services from "../services/index";
+import type { CreateBranchResponse } from "../services/index";
 import { useMini } from "@/context/miniContext";
 import { useMessage } from "@/context/messageContext";
 
@@ -10,12 +11,17 @@ const MiniInput = () => {
   if (!message) throw new Error("useMessage not working");
 
   const {
-    selectedText,
     miniConvoId,
     setMiniConvoId,
     setMiniChatHistory,
     miniMessage,
     setMiniMessage,
+    sourceMessageId,
+    highlightRange,
+    quote,
+    setSourceMessageId,
+    setHighlightRange,
+    notifyHighlightCreated,
   } = mini;
 
   // The branch window streams through the SAME orchestrator as the main chat —
@@ -33,35 +39,53 @@ const MiniInput = () => {
   const handleSend = async () => {
     if (!miniMessage || miniMessage.trim().length === 0 || streaming) return;
 
-    const messageContent = miniMessage.trim();
+    // B.2: the branch's first user message is the typed text ONLY — no more
+    // concatenating the highlighted quote into content. The highlight travels
+    // as structured data; the backend re-derives full-response context from it.
+    const typedText = miniMessage.trim();
     setMiniMessage(null);
 
     if (!miniConvoId) {
-      // First message — create the conversation with the highlighted text as
-      // context. /conversations only persists the user message (no LLM call);
-      // the reply is then streamed via the firstReply handoff.
-      const contextMessage = selectedText
-        ? `'${selectedText}' ${messageContent}`
-        : messageContent;
+      if (sourceMessageId && highlightRange && quote) {
+        const res: CreateBranchResponse = await services.createConversation({
+          content: typedText,
+          highlight: {
+            messageId: sourceMessageId,
+            startOffset: highlightRange.start,
+            endOffset: highlightRange.end,
+            quote,
+          },
+        });
+        if (!res?.convoId) return;
 
-      const messages = await services.createConversation({
-        content: contextMessage,
-      });
-      if (!messages || messages.length === 0) return;
+        setMiniConvoId(res.convoId);
+        const messages = await services.getMessages(res.convoId);
+        setMiniChatHistory(messages ?? null);
+        setSourceMessageId(null);
+        setHighlightRange(null);
+        notifyHighlightCreated();
+        await streamReply(res.convoId, {
+          firstReply: true,
+          setChatHistory: setMiniChatHistory,
+        });
+      } else {
+        const messages = await services.createConversation({
+          content: typedText,
+          save: false,
+        });
+        if (!Array.isArray(messages) || messages.length === 0) return;
 
-      const newConvoId = messages[0].convoId;
-      setMiniConvoId(newConvoId);
-      // Seed the persisted user bubble, then stream the assistant reply.
-      setMiniChatHistory(messages);
-      await streamReply(newConvoId, {
-        firstReply: true,
-        setChatHistory: setMiniChatHistory,
-      });
+        const newConvoId = messages[0].convoId;
+        setMiniConvoId(newConvoId);
+        setMiniChatHistory(messages);
+        await streamReply(newConvoId, {
+          firstReply: true,
+          setChatHistory: setMiniChatHistory,
+        });
+      }
     } else {
-      // Subsequent messages — stream the reply into the mini-window history,
-      // seeding the optimistic user bubble first.
       await streamReply(miniConvoId, {
-        content: messageContent,
+        content: typedText,
         setChatHistory: setMiniChatHistory,
         seedUser: true,
       });

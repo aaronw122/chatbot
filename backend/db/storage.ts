@@ -15,7 +15,7 @@ function maskKey(plaintext: string): string {
 export interface Storage {
   addMessage({ convoId, role, content }: MessageType): Promise<CleanMessage>
 
-  createConversation({ content, userId }: CreateConversation): Promise<Conversation>
+  createConversation({ content, userId, save }: CreateConversation): Promise<Conversation>
 
   getMessages({ convoId }: { convoId: string }): Promise<Message[] | []>
 
@@ -29,7 +29,7 @@ export interface Storage {
 
   saveConversation({ convoId }: { convoId: string }): Promise<Conversation>
 
-  //deleteConversation({convoId}: { convoId: string }): Promise<void>
+  deleteConversation({ convoId }: { convoId: string }): Promise<void>
 
   // ----- Branch-anchored highlights -----
   // Insert a highlight and return the persisted row (camelCase).
@@ -149,7 +149,7 @@ export class InMemoryStorage implements Storage {
 
     const convoArr = [...this.conversations.values()]
 
-    const userConvos = convoArr.filter(el => el.userId === userId)
+    const userConvos = convoArr.filter(el => el.userId === userId && el.save !== false)
 
     if (userConvos.length === 0) {
       return []
@@ -445,6 +445,7 @@ export class SupabaseStorage implements Storage {
       .from('conversations')
       .select()
       .eq('user_id', userId)
+      .eq('save', true)
       .order('created_at', { ascending: false })
 
     if (error) throw error
@@ -557,6 +558,7 @@ export class SupabaseStorage implements Storage {
       .from('highlights')
       .select()
       .in('message_id', messageIds)
+      .order('created_at', { ascending: true })
 
     if (error) throw error
 
@@ -613,6 +615,15 @@ export class SupabaseStorage implements Storage {
       updatedAt: data.updated_at,
       save: data.save
     }
+  }
+
+  async deleteConversation({ convoId }: { convoId: string }): Promise<void> {
+    const { error } = await supabaseAdmin
+      .from('conversations')
+      .delete()
+      .eq('id', convoId)
+
+    if (error) throw error
   }
 
   // ----- BYOK: API key CRUD (all queries filter user_id in WHERE) -----
