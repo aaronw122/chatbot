@@ -4,10 +4,12 @@ import MiniInput from "./miniInput";
 import { Maximize2, X } from "lucide-react";
 import { useNavigate } from "react-router";
 import { useMini } from "@/context/miniContext";
+import { useConvo } from "@/context/convoContext";
 import services from "../services/index";
 
 const MiniWindow = () => {
   const mini = useMini();
+  const convo = useConvo();
   const navigate = useNavigate();
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -15,7 +17,7 @@ const MiniWindow = () => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [mini?.miniChatHistory]);
 
-  if (!mini) return null;
+  if (!mini || !convo) return null;
 
   const {
     miniOpen,
@@ -65,6 +67,8 @@ const MiniWindow = () => {
     if (!miniConvoId) return;
     try {
       await services.promoteConversation(miniConvoId);
+      const conversations = await services.getConversations();
+      convo.setConvos(conversations);
     } catch {
       // promotion failed; keep the window open so the user can retry
       return;
