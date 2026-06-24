@@ -22,6 +22,16 @@ class NoKeyError extends Error {
 function isProvider(value: unknown): value is Provider {
   return value === 'openai' || value === 'anthropic'
 }
+
+// NDJSON headers via setHeader (NOT writeHead) so the CORS headers set by the
+// cors() middleware survive. X-Accel-Buffering disables nginx buffering (inert
+// for the Cloudflare tunnel, harmless to set).
+function writeNdjsonHeaders(res: Response) {
+  res.setHeader('Content-Type', 'application/x-ndjson')
+  res.setHeader('X-Accel-Buffering', 'no')
+  res.flushHeaders()
+}
+
 const app = express()
 const allowedOrigins = Array.from(
   new Set(
@@ -82,12 +92,7 @@ const streamAIResponse = async (convoId: string, userId: string, req: Request, r
 
   const updatedMessages = await storage.getMessages({ convoId })
 
-  // NDJSON headers via setHeader (NOT writeHead) so the CORS headers set by the
-  // cors() middleware survive. X-Accel-Buffering disables nginx buffering (inert
-  // for the Cloudflare tunnel, harmless to set).
-  res.setHeader('Content-Type', 'application/x-ndjson')
-  res.setHeader('X-Accel-Buffering', 'no')
-  res.flushHeaders()
+  writeNdjsonHeaders(res)
 
   // Abort the upstream SDK stream if the client disconnects (saves tokens).
   const abort = new AbortController()
@@ -148,10 +153,11 @@ const streamAIResponse = async (convoId: string, userId: string, req: Request, r
     // already finalized (or will) — finalize is single-fire so this is safe.
     // A genuine provider error (still connected) is a real error → errored:true.
     streamCompleted = true
-    if (!clientDisconnected) {
+    const wasRealError = !clientDisconnected
+    if (wasRealError) {
       console.error('stream errored mid-flight', err)
     }
-    await finalize({ errored: !clientDisconnected })
+    await finalize({ errored: wasRealError })
   }
 }
 

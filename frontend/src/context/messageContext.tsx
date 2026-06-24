@@ -118,8 +118,9 @@ export function MessageProvider({ children }: { children: React.ReactNode }) {
     };
 
     // Mark the streaming assistant message as interrupted in-place (error / EOF
-    // / inactivity). Appends a sentinel the Message component renders as the
-    // "⚠ response interrupted" affordance.
+    // / inactivity). Appends a sentinel line to the message body; it renders
+    // inline as plain text (no dedicated component affordance) so the user sees
+    // the reply was interrupted.
     const markInterrupted = () => {
       setChatHistory((prev) => {
         if (!prev) return prev;

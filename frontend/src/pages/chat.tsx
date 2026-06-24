@@ -45,8 +45,10 @@ const Session = () => {
     const state = location.state as ChatLocationState;
     const streamFirst = state?.streamFirst;
 
-    if (streamFirst && !handoffDoneRef.current) {
-      handoffDoneRef.current = true;
+    // Fresh-create handoff: seed the user's first message and kick off the
+    // streamed first reply, skipping the wipe+refetch that would race the
+    // live stream.
+    const kickoffFirstReply = (firstMessage: string) => {
       // Clear the home-page pre-nav optimistic bubble now that this page owns
       // the live state.
       setOptimisticMsg(null);
@@ -57,12 +59,17 @@ const Session = () => {
           id: crypto.randomUUID(),
           convoId: id!,
           role: "user" as const,
-          content: streamFirst,
+          content: firstMessage,
           createdAt: new Date().toISOString(),
         },
       ];
       setChatHistory(seeded);
       streamReply(id!, { firstReply: true, setChatHistory });
+    };
+
+    if (streamFirst && !handoffDoneRef.current) {
+      handoffDoneRef.current = true;
+      kickoffFirstReply(streamFirst);
       return;
     }
 
