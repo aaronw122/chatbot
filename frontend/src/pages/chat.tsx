@@ -33,9 +33,10 @@ const Session = () => {
     streamReply,
   } = message;
 
-  // Guard so the create→stream handoff fires exactly once per mount even under
-  // React 18 StrictMode double-invoke.
-  const handoffDoneRef = useRef(false);
+  // Tracks which convo id the create→stream handoff already fired for, so it
+  // runs exactly once per fresh convo (and survives the StrictMode double-invoke)
+  // even though the load effect now re-runs whenever the :id param changes.
+  const handoffIdRef = useRef<string | null>(null);
 
   // Keep the latest message (and the streaming typing indicator) in view as the
   // history grows — without this, a freshly-sent message or incoming tokens can
@@ -45,17 +46,18 @@ const Session = () => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [chatHistory]);
 
-  // On mount: normal convos refetch. But when we arrive from a fresh create
-  // (homeInput navigates with state.streamFirst), SKIP the wipe+refetch — that
-  // would clobber/race the live first-reply stream. Instead seed the user
-  // message and kick off the streamed assistant reply (B.2 / B.3 mount guard).
+  // Load the active conversation. Re-runs whenever the :id param changes —
+  // React Router reuses this component across /chat/A → /chat/B, so without an
+  // `id` dependency a sidebar click would change the URL but never reload the
+  // messages (the conversation would appear "stuck" / unsaved until a reload).
+  //
+  // Special case: arriving from a fresh create (homeInput navigates with
+  // state.streamFirst), we seed the user's first message and stream the reply
+  // instead of refetching — refetching would clobber/race the live stream.
   useEffect(() => {
     const state = location.state as ChatLocationState;
     const streamFirst = state?.streamFirst;
 
-    // Fresh-create handoff: seed the user's first message and kick off the
-    // streamed first reply, skipping the wipe+refetch that would race the
-    // live stream.
     const kickoffFirstReply = (firstMessage: string) => {
       // Clear the home-page pre-nav optimistic bubble now that this page owns
       // the live state.
@@ -75,17 +77,22 @@ const Session = () => {
       streamReply(id!, { firstReply: true, setChatHistory });
     };
 
-    if (streamFirst && !handoffDoneRef.current) {
-      handoffDoneRef.current = true;
+    // Fresh-create handoff: fire once per new convo. The per-id guard also
+    // absorbs the StrictMode double-invoke without clobbering the live stream.
+    if (streamFirst) {
+      if (handoffIdRef.current === id) return;
+      handoffIdRef.current = id!;
       kickoffFirstReply(streamFirst);
       return;
     }
 
-    // Default behaviour: clear any stale optimistic bubble and refetch history.
+    // Existing convo (sidebar click / direct load / switch): show the loading
+    // state, then fetch this conversation's messages.
     setOptimisticMsg(null);
+    setChatHistory(null);
     services.getMessages(id!).then((r) => setChatHistory(r));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [id]);
 
   // Subsequent sends in an existing convo: stream the reply, live-appending the
   // optimistic user message + growing assistant message into chatHistory.
