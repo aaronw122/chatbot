@@ -60,6 +60,38 @@ app.all("/api/auth/{*any}", toNodeHandler(auth))
 
 //pass through whole new array each Req
 
+// Branch context assembly. If `convoId` is a branch (it has a highlight whose
+// branch_convo_id points at it), dereference the highlight's source message to
+// its full content and PREPEND a single context preamble so the model answers
+// with knowledge of the whole source response, not just the highlighted snippet
+// (plan decision #7). Normal (non-branch) convos are returned unchanged. Only
+// the message array passed to the provider changes — persistence is untouched.
+const assembleProviderMessages = async (
+  convoId: string,
+  baseMessages: Array<CleanMessage | Message>
+): Promise<Array<CleanMessage | Message>> => {
+  const highlight = await storage.getHighlightByBranch(convoId)
+  if (!highlight) return baseMessages
+
+  const source = await storage.getMessage({ id: highlight.messageId })
+  // If the source message was regenerated/deleted (cascade should have removed
+  // the highlight, but guard anyway), fall back to the branch's own messages.
+  if (!source) return baseMessages
+
+  const preamble: CleanMessage = {
+    id: `preamble-${convoId}`,
+    convoId,
+    role: 'user',
+    content:
+      `For context, here is an earlier response you gave:\n\n` +
+      `${source.content}\n\n` +
+      `The user highlighted this part: "${highlight.quote}". Their question about it follows.`,
+    createdAt: new Date().toISOString(),
+  }
+
+  return [preamble, ...baseMessages]
+}
+
 const getAIResponse = async (convoId: string, userId: string) => {
   const active = await storage.getActiveKey({ userId })
   if (!active) {
@@ -67,11 +99,12 @@ const getAIResponse = async (convoId: string, userId: string) => {
   }
 
   const updatedMessages = await storage.getMessages({ convoId })
+  const providerMessages = await assembleProviderMessages(convoId, updatedMessages)
   const text = await generateReply({
     provider: active.provider,
     model: active.model,
     apiKey: active.apiKey,
-    messages: updatedMessages,
+    messages: providerMessages,
   })
   return await storage.addMessage({ convoId, role: 'assistant', content: text })
 }
@@ -91,6 +124,7 @@ const streamAIResponse = async (convoId: string, userId: string, req: Request, r
   }
 
   const updatedMessages = await storage.getMessages({ convoId })
+  const providerMessages = await assembleProviderMessages(convoId, updatedMessages)
 
   writeNdjsonHeaders(res)
 
@@ -138,7 +172,7 @@ const streamAIResponse = async (convoId: string, userId: string, req: Request, r
         provider: active.provider,
         model: active.model,
         apiKey: active.apiKey,
-        messages: updatedMessages,
+        messages: providerMessages,
       },
       abort.signal
     )) {
@@ -190,7 +224,28 @@ app.post('/conversations', async (req: Request, res: Response) => {
       return res.status(404).json({error: "unauthorized"})
     }
 
-    const { content, save, withReply } = req.body
+    const { content, save, withReply, highlight } = req.body
+
+    // Branch creation (highlight present): create a HIDDEN (save:false) branch
+    // conversation anchored to a span of an existing assistant message. Persist
+    // the user's typed question, then record the highlight linking this new
+    // convo back to the source message. Return { convoId, highlightId } — NOT
+    // the message array (the frontend opens a mini-window from this shape).
+    if (highlight) {
+      const { messageId, startOffset, endOffset, quote } = highlight
+      const branchConvo = await storage.createConversation({ content: content, userId: session.user.id, save: false })
+      await storage.addMessage({ convoId: branchConvo.id, content: content, role: "user" })
+      const created = await storage.createHighlight({
+        messageId,
+        branchConvoId: branchConvo.id,
+        startOffset,
+        endOffset,
+        quote,
+        userId: session.user.id,
+      })
+      return res.json({ convoId: branchConvo.id, highlightId: created.id })
+    }
+
     // De-LLM'd (Phase 2): by default create the convo + persist the user's first
     // message only. The streamed first assistant reply is produced by the
     // streaming POST /messages/:id path (with the {firstReply:true} marker), so
@@ -217,6 +272,67 @@ app.post('/conversations', async (req: Request, res: Response) => {
     }
     console.error('failed to add conversation', error)
     res.status(500).json({error: "server error"})
+  }
+})
+
+// GET /conversations/:id/highlights — all highlights anchored to messages in
+// this conversation, for the frontend to render marks on load. Owner-scoped.
+app.get('/conversations/:id/highlights', async (req: Request, res: Response) => {
+  try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers)
+    })
+
+    if (!session) {
+      return res.status(401).json({ error: "unauthorized" })
+    }
+
+    const id = req.params.id as string
+
+    const convo = await storage.getConversation({ convoId: id })
+    if (!convo || convo.userId !== session.user.id) {
+      return res.status(404).json({ error: "not found" })
+    }
+
+    const highlights = await storage.getHighlightsByConvo(id)
+    res.json(highlights)
+  }
+  catch (error) {
+    console.error('failed to get highlights for convo', error)
+    res.status(500).json({ error: "server error" })
+  }
+})
+
+// PATCH /conversations/:id { save: true } — fullscreen promotion: flip a hidden
+// branch (save:false) into a saved, sidebar-visible conversation. Owner-scoped.
+app.patch('/conversations/:id', async (req: Request, res: Response) => {
+  try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers)
+    })
+
+    if (!session) {
+      return res.status(401).json({ error: "unauthorized" })
+    }
+
+    const id = req.params.id as string
+
+    const convo = await storage.getConversation({ convoId: id })
+    if (!convo || convo.userId !== session.user.id) {
+      return res.status(404).json({ error: "not found" })
+    }
+
+    const { save } = req.body ?? {}
+    if (save !== true) {
+      return res.status(400).json({ error: "unsupported patch" })
+    }
+
+    const updated = await storage.saveConversation({ convoId: id })
+    res.json(updated)
+  }
+  catch (error) {
+    console.error('failed to patch conversation', error)
+    res.status(500).json({ error: "server error" })
   }
 })
 
