@@ -126,26 +126,33 @@
     }
 }
 
-h1 {
-    @apply scroll-m-20 text-4xl font-semibold tracking-tight;
-}
+/* These element defaults MUST live in @layer base. Unlayered rules win over
+   Tailwind's @layer utilities regardless of specificity, so an unlayered
+   `h1 { text-4xl }` would override every text-* utility on every <h1>
+   (e.g. clamping a `text-base` sidebar title or a `text-6xl` hero to 36px).
+   In the base layer they act as overridable defaults, as intended. */
+@layer base {
+    h1 {
+        @apply scroll-m-20 text-4xl font-semibold tracking-tight;
+    }
 
-h2 {
-    @apply scroll-m-20 text-3xl font-semibold tracking-tight;
-}
+    h2 {
+        @apply scroll-m-20 text-3xl font-semibold tracking-tight;
+    }
 
-h3 {
-    @apply scroll-m-20 text-2xl font-semibold tracking-tight;
-}
+    h3 {
+        @apply scroll-m-20 text-2xl font-semibold tracking-tight;
+    }
 
-h4 {
-    @apply scroll-m-20 text-xl font-medium;
-}
+    h4 {
+        @apply scroll-m-20 text-xl font-medium;
+    }
 
-h5 {
-    @apply scroll-m-20 text-lg font-medium;
-}
+    h5 {
+        @apply scroll-m-20 text-lg font-medium;
+    }
 
-h6 {
-    @apply scroll-m-20 text-base font-medium;
+    h6 {
+        @apply scroll-m-20 text-base font-medium;
+    }
 }
