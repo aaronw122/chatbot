@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useSettings } from "@/context/settingsContext";
 import { MobileMenuButton } from "@/components/mobileMenuButton";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import services from "../services/index";
 import {
   PROVIDERS,
@@ -113,6 +114,7 @@ const ChatHeader = () => {
   if (!hasAnyKey) {
     return (
       <header className="flex h-14 items-center gap-2 border-b border-border bg-background px-4">
+        <SidebarTrigger className="hidden md:flex" />
         <MobileMenuButton />
         <button
           type="button"
@@ -132,6 +134,7 @@ const ChatHeader = () => {
 
   return (
     <header className="flex h-14 items-center gap-3 border-b border-border bg-background px-4">
+      <SidebarTrigger className="hidden md:flex" />
       <MobileMenuButton />
       <DropdownMenu>
         <DropdownMenuTrigger
