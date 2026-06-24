@@ -237,6 +237,47 @@ describe("POST /conversations with highlight", () => {
     expect(hl!.quote).toBe("highlighted span");
   });
 
+  // Regression: offsets + quote live in the FRONTEND's rendered text-node space,
+  // NOT the raw markdown stored in source.content. A formatted reply renders
+  // "bold" from "**bold**", collapses "\n\n", strips "- " list markers, etc., so
+  // the quote is frequently NOT a literal substring of source.content and the
+  // offsets exceed/disagree with content.length. The backend must NOT validate
+  // against raw content — doing so 400'd every branch on a formatted response.
+  it("accepts a highlight whose quote is not a literal substring of the raw markdown", async () => {
+    await configureKey();
+    const sourceConvo = await storage.createConversation({ content: "src", userId: USER });
+    const sourceMsg = await storage.addMessage({
+      convoId: sourceConvo.id,
+      role: "assistant",
+      // Raw markdown: rendered text would be "bold text here" — note no "**".
+      content: "- **bold** text here\n\n- second point",
+    });
+
+    const res = await fetch(baseUrl + "/conversations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        content: "what does this mean?",
+        highlight: {
+          messageId: sourceMsg.id,
+          // rendered-space offsets for "bold text" — do NOT index into the raw
+          // markdown above, and "bold text" is not a substring of it.
+          startOffset: 0,
+          endOffset: 9,
+          quote: "bold text",
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { convoId: string; highlightId: string };
+    expect(body.convoId).toBeTruthy();
+    const hl = await storage.getHighlightByBranch(body.convoId);
+    expect(hl!.quote).toBe("bold text");
+    expect(hl!.startOffset).toBe(0);
+    expect(hl!.endOffset).toBe(9);
+  });
+
   it("highlight absent → save:true convo, message-array shape, no highlight", async () => {
     await configureKey();
     const res = await fetch(baseUrl + "/conversations", {

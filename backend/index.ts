@@ -239,17 +239,22 @@ app.post('/conversations', async (req: Request, res: Response) => {
       const sourceConvo = source
         ? await storage.getConversation({ convoId: source.convoId })
         : null
+      // NOTE: startOffset/endOffset and `quote` live in the FRONTEND's rendered
+      // text-node coordinate space (see frontend/src/lib/textOffsets.ts), NOT
+      // the raw markdown stored in source.content. They are opaque to the
+      // backend — persisted only so the frontend can re-render the mark, and
+      // `quote` is used for the model preamble + tooltip. Do NOT validate them
+      // against source.content (rendered text strips markdown / collapses
+      // whitespace, so any formatted reply would fail). Validate shape only.
       const validOffsets =
         Number.isInteger(startOffset) &&
         Number.isInteger(endOffset) &&
         startOffset >= 0 &&
-        endOffset > startOffset &&
-        endOffset <= (source?.content.length ?? 0)
+        endOffset > startOffset
       const validQuote =
         typeof quote === 'string' &&
         quote.trim().length > 0 &&
-        quote.length <= 10_000 &&
-        Boolean(source?.content.includes(quote))
+        quote.length <= 10_000
 
       if (
         !source ||
