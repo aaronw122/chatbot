@@ -37,6 +37,14 @@ const Session = () => {
   // React 18 StrictMode double-invoke.
   const handoffDoneRef = useRef(false);
 
+  // Keep the latest message (and the streaming typing indicator) in view as the
+  // history grows — without this, a freshly-sent message or incoming tokens can
+  // land below the fold and feel like nothing happened.
+  const bottomRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [chatHistory]);
+
   // On mount: normal convos refetch. But when we arrive from a fresh create
   // (homeInput navigates with state.streamFirst), SKIP the wipe+refetch — that
   // would clobber/race the live first-reply stream. Instead seed the user
@@ -98,6 +106,7 @@ const Session = () => {
         <>
           <div className="flex-1 overflow-y-auto py-6">
             <MessageHistory history={chatHistory} />
+            <div ref={bottomRef} />
           </div>
           <div className="pb-4 pt-2">
             <Input

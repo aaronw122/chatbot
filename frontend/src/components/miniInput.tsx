@@ -1,10 +1,13 @@
 import { Send } from "lucide-react";
 import services from "../services/index";
 import { useMini } from "@/context/miniContext";
+import { useMessage } from "@/context/messageContext";
 
 const MiniInput = () => {
   const mini = useMini();
+  const message = useMessage();
   if (!mini) return null;
+  if (!message) throw new Error("useMessage not working");
 
   const {
     selectedText,
@@ -15,6 +18,11 @@ const MiniInput = () => {
     setMiniMessage,
   } = mini;
 
+  // The branch window streams through the SAME orchestrator as the main chat —
+  // we just inject the mini-window's history setter, so it gets the identical
+  // instant-feedback (typing indicator) + token-by-token behavior.
+  const { streamReply, streaming } = message;
+
   const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     setMiniMessage(event.target.value);
     const el = event.target;
@@ -23,49 +31,53 @@ const MiniInput = () => {
   };
 
   const handleSend = async () => {
-    if (!miniMessage || miniMessage.trim().length === 0) return;
+    if (!miniMessage || miniMessage.trim().length === 0 || streaming) return;
 
     const messageContent = miniMessage.trim();
     setMiniMessage(null);
 
     if (!miniConvoId) {
-      // First message — create new conversation with highlighted text as context
+      // First message — create the conversation with the highlighted text as
+      // context. /conversations only persists the user message (no LLM call);
+      // the reply is then streamed via the firstReply handoff.
       const contextMessage = selectedText
         ? `'${selectedText}' ${messageContent}`
         : messageContent;
 
-      //this is where we change to reference new express function, and send over agent instead.
       const messages = await services.createConversation({
         content: contextMessage,
-        withReply: true,
       });
+      if (!messages || messages.length === 0) return;
 
-      //then right after we add the contextMessage as a followup.
-
-      // messages is an array of CleanMessage[] (user msg + AI response)
-      if (messages && messages.length > 0) {
-        const newConvoId = messages[0].convoId;
-        setMiniConvoId(newConvoId);
-        setMiniChatHistory(messages);
-      }
+      const newConvoId = messages[0].convoId;
+      setMiniConvoId(newConvoId);
+      // Seed the persisted user bubble, then stream the assistant reply.
+      setMiniChatHistory(messages);
+      await streamReply(newConvoId, {
+        firstReply: true,
+        setChatHistory: setMiniChatHistory,
+      });
     } else {
-      // Subsequent messages — send to existing mini conversation
-      await services.sendMessage({
+      // Subsequent messages — stream the reply into the mini-window history,
+      // seeding the optimistic user bubble first.
+      await streamReply(miniConvoId, {
         content: messageContent,
-        role: "user",
-        convoId: miniConvoId,
+        setChatHistory: setMiniChatHistory,
+        seedUser: true,
       });
     }
   };
 
-  const disabled = !miniMessage || miniMessage.trim().length === 0;
+  const disabled =
+    !miniMessage || miniMessage.trim().length === 0 || streaming;
 
   return (
     <div className="flex items-end gap-2 rounded-2xl border border-input bg-background p-2 shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring">
       <textarea
         placeholder="ask a follow-up"
         rows={1}
-        className="max-h-32 flex-1 resize-none bg-transparent px-1 py-1 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+        disabled={streaming}
+        className="max-h-32 flex-1 resize-none bg-transparent px-1 py-1 text-sm text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-50"
         value={miniMessage ?? ""}
         onChange={handleChange}
         onKeyDown={(e) => {

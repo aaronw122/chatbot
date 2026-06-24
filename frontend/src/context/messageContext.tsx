@@ -51,12 +51,14 @@ export function MessageProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Core streaming orchestrator (B.3). Live-appends an optimistic user message
-  // (when sending content) and a GROWING assistant message into `chatHistory`,
-  // then funnels every termination (done / error / fetch reject / EOF /
-  // inactivity) through ONE finally that re-enables the composer.
+  // (when sending content) plus an assistant bubble that shows a typing
+  // indicator immediately and then grows as chunks arrive — all into
+  // `chatHistory`. Every termination (done / error / fetch reject / EOF /
+  // inactivity) funnels through ONE finally that re-enables the composer.
   //
-  // `setChatHistory` is injected from convoContext (chat.tsx owns both) so this
-  // context doesn't have to depend on convoContext.
+  // `setChatHistory` is injected by the caller (chat.tsx passes the main convo
+  // setter; miniInput passes the branch-window setter) so this context doesn't
+  // depend on either convo context — the same orchestrator drives both surfaces.
   const streamReply = async (
     convoId: string,
     {
@@ -72,16 +74,16 @@ export function MessageProvider({ children }: { children: React.ReactNode }) {
       >;
       // When true, seed the optimistic user message into chatHistory before
       // streaming (normal sends). For firstReply handoff the user message is
-      // already seeded by chat.tsx, so callers pass false.
+      // already seeded by the caller, so they pass false.
       seedUser?: boolean;
     },
   ) => {
     const assistantId = crypto.randomUUID();
-    let assistantStarted = false; // first chunk has landed
+    let receivedChunk = false; // at least one content chunk has landed
     let errored = false;
 
-    // Seed the optimistic user bubble (subsequent sends). The home → chat
-    // handoff seeds the user message in chat.tsx instead.
+    // Seed the optimistic user bubble (subsequent sends). The home → chat and
+    // branch first-message handoffs seed the user message in the caller instead.
     if (seedUser && content) {
       const userMsg: CleanMessage = {
         id: crypto.randomUUID(),
@@ -95,19 +97,25 @@ export function MessageProvider({ children }: { children: React.ReactNode }) {
 
     setStreaming(true);
 
-    // Defer appending the assistant bubble until the first chunk so there's no
-    // empty bubble during tunnel latency. Once it exists, grow its content.
-    const ensureAssistant = () => {
-      if (assistantStarted) return;
-      assistantStarted = true;
-      const assistantMsg: CleanMessage = {
-        id: assistantId,
-        convoId,
-        role: "assistant",
-        content: "",
-        createdAt: new Date().toISOString(),
-      };
-      setChatHistory((prev) => [...(prev ?? []), assistantMsg]);
+    // Show the assistant bubble IMMEDIATELY with empty content — Message renders
+    // empty assistant content as an animated typing indicator, giving instant
+    // feedback during the tunnel/model latency before the first token.
+    const assistantMsg: CleanMessage = {
+      id: assistantId,
+      convoId,
+      role: "assistant",
+      content: "",
+      createdAt: new Date().toISOString(),
+    };
+    setChatHistory((prev) => [...(prev ?? []), assistantMsg]);
+
+    // Drop the placeholder assistant bubble (used when the stream ends with no
+    // content at all, e.g. a 409 no-key handled by triggerNoApiKey — we don't
+    // want a stray typing/interrupted bubble in that case).
+    const removeAssistant = () => {
+      setChatHistory((prev) =>
+        prev ? prev.filter((m) => m.id !== assistantId) : prev,
+      );
     };
 
     const clearInactivity = () => {
@@ -142,7 +150,6 @@ export function MessageProvider({ children }: { children: React.ReactNode }) {
         if (settled) return;
         settled = true;
         errored = true;
-        ensureAssistant();
         markInterrupted();
         resolve();
       }, INACTIVITY_MS);
@@ -157,7 +164,7 @@ export function MessageProvider({ children }: { children: React.ReactNode }) {
             content,
             firstReply,
             onChunk: (text) => {
-              ensureAssistant();
+              receivedChunk = true;
               armInactivity(resolve);
               setChatHistory((prev) => {
                 if (!prev) return prev;
@@ -173,7 +180,6 @@ export function MessageProvider({ children }: { children: React.ReactNode }) {
               settled = true;
               errored = true;
               clearInactivity();
-              ensureAssistant();
               markInterrupted();
               resolve();
             },
@@ -189,12 +195,14 @@ export function MessageProvider({ children }: { children: React.ReactNode }) {
             if (settled) return;
             settled = true;
             clearInactivity();
-            // If we never received a terminal frame but the stream ended after
-            // emitting content, treat it as interrupted; if no content ever
-            // arrived (e.g. 409 handled by triggerNoApiKey), just clean up.
-            if (assistantStarted) {
+            // Got partial content but no `done` frame → interrupted. No content
+            // at all (e.g. 409 handled by triggerNoApiKey) → drop the empty
+            // placeholder bubble entirely.
+            if (receivedChunk) {
               errored = true;
               markInterrupted();
+            } else {
+              removeAssistant();
             }
             resolve();
           })
@@ -203,7 +211,6 @@ export function MessageProvider({ children }: { children: React.ReactNode }) {
             settled = true;
             errored = true;
             clearInactivity();
-            ensureAssistant();
             markInterrupted();
             reject(err);
           });

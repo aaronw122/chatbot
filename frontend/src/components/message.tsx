@@ -4,6 +4,7 @@ import { computePosition, offset, flip, shift } from "@floating-ui/dom";
 import Markdown from "react-markdown";
 import { Check, Copy } from "lucide-react";
 import { useMini } from "@/context/miniContext";
+import TypingDots from "./typingDots";
 
 const Message = ({ role, content }: MessageProps) => {
   const replyRef = useRef<HTMLButtonElement>(null);
@@ -62,7 +63,7 @@ const Message = ({ role, content }: MessageProps) => {
   ) : (
     <div className="group" onMouseUp={() => mouseUpHandler()}>
       <div className="prose prose-sm prose-neutral max-w-none text-foreground">
-        <Markdown>{content}</Markdown>
+        {content.trim() === "" ? <TypingDots /> : <Markdown>{content}</Markdown>}
       </div>
       <div className="mt-1 flex h-6 items-center opacity-0 transition-opacity group-hover:opacity-100">
         <button

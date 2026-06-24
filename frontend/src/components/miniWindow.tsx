@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import MiniMessageHistory from "./miniChats";
 import MiniInput from "./miniInput";
 import { X } from "lucide-react";
@@ -23,6 +23,12 @@ const MiniWindow = () => {
   useEffect(() => {
     setMiniChatHistory(null);
   }, []);
+
+  // Keep the latest branch message + streaming typing indicator in view.
+  const bottomRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [miniChatHistory]);
 
   const handleClose = () => {
     setMiniOpen(false);
@@ -59,6 +65,7 @@ const MiniWindow = () => {
 
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {miniChatHistory && <MiniMessageHistory history={miniChatHistory} />}
+        <div ref={bottomRef} />
       </div>
 
       <div className="px-3 pb-3 pt-2">
