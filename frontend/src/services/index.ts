@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { Provider, UserKeyMeta, ModelsResponse } from '../types/byok'
+import type { Highlight, HighlightRequest } from '../../../types/types'
 
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim()
 const baseURL = configuredApiUrl || (import.meta.env.DEV ? 'http://localhost:3000' : window.location.origin)
@@ -45,8 +46,30 @@ const getConversations = async () => {
   return response.data
 }
 
-const createConversation = async (convoReq: { content: string, save?: true | false}) => {
+// Response when a conversation is created from a highlight (branch). Without a
+// highlight the backend returns the message array (unchanged home path).
+export type CreateBranchResponse = { convoId: string; highlightId: string }
+
+const createConversation = async (convoReq: {
+  content: string
+  save?: true | false
+  highlight?: HighlightRequest
+}) => {
   const response = await axios.post(`${baseURL}/conversations`, convoReq)
+  return response.data
+}
+
+// Fetch all highlights anchored to messages in a conversation. Used to render
+// persistent marks on load / SPA nav.
+const getHighlights = async (convoId: string): Promise<Highlight[]> => {
+  const response = await axios.get(`${baseURL}/conversations/${convoId}/highlights`)
+  return response.data
+}
+
+// Promote a branch to a standalone sidebar conversation (fullscreen). The
+// backend flips `save` -> true.
+const promoteConversation = async (convoId: string): Promise<void> => {
+  const response = await axios.patch(`${baseURL}/conversations/${convoId}`, { save: true })
   return response.data
 }
 
@@ -103,6 +126,8 @@ export default {
   resetMessages,
   getConversations,
   createConversation,
+  getHighlights,
+  promoteConversation,
   getModels,
   getKeys,
   addKey,

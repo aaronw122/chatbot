@@ -1,5 +1,6 @@
 import { Send } from "lucide-react";
 import services from "../services/index";
+import type { CreateBranchResponse } from "../services/index";
 import { useMini } from "@/context/miniContext";
 
 const MiniInput = () => {
@@ -7,12 +8,16 @@ const MiniInput = () => {
   if (!mini) return null;
 
   const {
-    selectedText,
     miniConvoId,
     setMiniConvoId,
     setMiniChatHistory,
     miniMessage,
     setMiniMessage,
+    sourceMessageId,
+    highlightRange,
+    quote,
+    setSourceMessageId,
+    setHighlightRange,
   } = mini;
 
   const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -25,35 +30,57 @@ const MiniInput = () => {
   const handleSend = async () => {
     if (!miniMessage || miniMessage.trim().length === 0) return;
 
-    const messageContent = miniMessage.trim();
+    // B.2: the branch's first user message is the typed text ONLY — no more
+    // concatenating the highlighted quote into content. The highlight travels
+    // as structured data; the backend re-derives full-response context from it.
+    const typedText = miniMessage.trim();
     setMiniMessage(null);
 
     if (!miniConvoId) {
-      // First message — create new conversation with highlighted text as context
-      const contextMessage = selectedText
-        ? `'${selectedText}' ${messageContent}`
-        : messageContent;
-
-      //this is where we change to reference new express function, and send over agent instead.
-      const messages = await services.createConversation({
-        content: contextMessage,
-      });
-
-      //then right after we add the contextMessage as a followup.
-
-      // messages is an array of CleanMessage[] (user msg + AI response)
-      if (messages && messages.length > 0) {
-        const newConvoId = messages[0].convoId;
-        setMiniConvoId(newConvoId);
-        setMiniChatHistory(messages);
+      // First message — create the branch conversation.
+      if (sourceMessageId && highlightRange && quote) {
+        // Anchored branch: send structured highlight. Response is
+        // { convoId, highlightId } (NOT a message array).
+        const res: CreateBranchResponse = await services.createConversation({
+          content: typedText,
+          highlight: {
+            messageId: sourceMessageId,
+            startOffset: highlightRange.start,
+            endOffset: highlightRange.end,
+            quote,
+          },
+        });
+        if (res?.convoId) {
+          setMiniConvoId(res.convoId);
+          // The created branch already holds the user message + AI reply; load
+          // it so the window shows the full first turn.
+          const messages = await services.getMessages(res.convoId);
+          setMiniChatHistory(messages ?? null);
+          // The pending anchor is now persisted as a real highlight; clear the
+          // transient capture state (keep `quote` for the ↳ reference header).
+          setSourceMessageId(null);
+          setHighlightRange(null);
+        }
+      } else {
+        // Chip dismissed (no anchor): create a normal conversation. The home
+        // path stays array-based — handle that shape here too.
+        const messages = await services.createConversation({
+          content: typedText,
+        });
+        if (Array.isArray(messages) && messages.length > 0) {
+          setMiniConvoId(messages[0].convoId);
+          setMiniChatHistory(messages);
+        }
       }
     } else {
-      // Subsequent messages — send to existing mini conversation
+      // Follow-up — typed text only; re-fetch the branch to pick up the reply.
       await services.sendMessage({
-        content: messageContent,
+        content: typedText,
         role: "user",
         convoId: miniConvoId,
       });
+      const messages = await services.getMessages(miniConvoId);
+      setMiniChatHistory(messages ?? null);
     }
   };
 

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import MessageHistory from "../components/messageHistory";
 import Input from "../components/input";
 import MiniWindow from "../components/miniWindow";
@@ -8,6 +8,7 @@ import { useConvo } from "@/context/convoContext";
 
 import services from "../services/index";
 import { useMessage } from "@/context/messageContext";
+import type { Highlight } from "../../../types/types";
 
 const Session = () => {
   const convo = useConvo();
@@ -24,11 +25,30 @@ const Session = () => {
   const { handleMsgChange, sendMessage, newMessage, setOptimisticMsg } =
     message;
 
-  //on initial render, we getMessageHistory
+  // B.5: highlights for this conversation, grouped by source message id so
+  // each Message renders its persistent marks on load and SPA nav.
+  const [highlightsByMessage, setHighlightsByMessage] = useState<
+    Record<string, Highlight[]>
+  >({});
+
+  //on initial render (and on conversation switch) we load messages + highlights
   useEffect(() => {
+    if (!id) return;
     setOptimisticMsg(null);
-    services.getMessages(id!).then((r) => setChatHistory(r));
-  }, []);
+    setHighlightsByMessage({});
+    services.getMessages(id).then((r) => setChatHistory(r));
+    services
+      .getHighlights(id)
+      .then((hs) => {
+        const grouped: Record<string, Highlight[]> = {};
+        for (const h of hs) {
+          (grouped[h.messageId] ??= []).push(h);
+        }
+        setHighlightsByMessage(grouped);
+      })
+      .catch(() => setHighlightsByMessage({}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   //then, on subsequent chat messages, we update
 
@@ -41,7 +61,10 @@ const Session = () => {
       {chatHistory ? (
         <>
           <div className="flex-1 overflow-y-auto py-6">
-            <MessageHistory history={chatHistory} />
+            <MessageHistory
+              history={chatHistory}
+              highlightsByMessage={highlightsByMessage}
+            />
           </div>
           <div className="pb-4 pt-2">
             <Input
