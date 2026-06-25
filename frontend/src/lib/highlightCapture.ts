@@ -44,31 +44,6 @@ export interface CaptureRange {
 }
 
 /**
- * Normalize a START endpoint to a canonical offset. If it lands inside math,
- * snap to BEFORE the math atom (the leaf's canonical start).
- */
-function normalizeStart(ep: CaptureEndpoint): number {
-  if (ep.kind === 'math') return ep.leafStart;
-  return ep.leafStart + clampOffset(ep);
-}
-
-/**
- * Normalize an END endpoint to a canonical offset. If it lands inside math,
- * snap to AFTER the math atom (the leaf's canonical end).
- */
-function normalizeEnd(ep: CaptureEndpoint): number {
-  if (ep.kind === 'math') return ep.leafEnd;
-  return ep.leafStart + clampOffset(ep);
-}
-
-function clampOffset(ep: CaptureEndpoint): number {
-  const len = ep.leafEnd - ep.leafStart;
-  if (ep.offsetInLeaf < 0) return 0;
-  if (ep.offsetInLeaf > len) return len;
-  return ep.offsetInLeaf;
-}
-
-/**
  * Map a resolved (start, end) endpoint pair to normalized v2 coordinates,
  * applying atomic-math normalization. Returns null when the range is empty after
  * normalization (the only rejection condition).
@@ -76,19 +51,44 @@ function clampOffset(ep: CaptureEndpoint): number {
  * Swaps endpoints if the DOM handed them to us reversed (backwards selection).
  */
 export function captureRangeFromEndpoints(
-  startEp: CaptureEndpoint,
-  endEp: CaptureEndpoint,
+  startEndpoint: CaptureEndpoint,
+  endEndpoint: CaptureEndpoint,
 ): CaptureRange | null {
-  let start = normalizeStart(startEp);
-  let end = normalizeEnd(endEp);
+  let start = normalizeStart(startEndpoint);
+  let end = normalizeEnd(endEndpoint);
 
   if (end < start) {
     // Reversed selection: recompute with roles swapped so math snapping is
     // applied with the correct "before/after" semantics for each boundary.
-    start = normalizeStart(endEp);
-    end = normalizeEnd(startEp);
+    start = normalizeStart(endEndpoint);
+    end = normalizeEnd(startEndpoint);
   }
 
   if (end <= start) return null;
   return { start, end };
+}
+
+/**
+ * Normalize a START endpoint to a canonical offset. If it lands inside math,
+ * snap to BEFORE the math atom (the leaf's canonical start).
+ */
+function normalizeStart(endpoint: CaptureEndpoint): number {
+  if (endpoint.kind === 'math') return endpoint.leafStart;
+  return endpoint.leafStart + clampOffset(endpoint);
+}
+
+/**
+ * Normalize an END endpoint to a canonical offset. If it lands inside math,
+ * snap to AFTER the math atom (the leaf's canonical end).
+ */
+function normalizeEnd(endpoint: CaptureEndpoint): number {
+  if (endpoint.kind === 'math') return endpoint.leafEnd;
+  return endpoint.leafStart + clampOffset(endpoint);
+}
+
+function clampOffset(endpoint: CaptureEndpoint): number {
+  const leafLength = endpoint.leafEnd - endpoint.leafStart;
+  if (endpoint.offsetInLeaf < 0) return 0;
+  if (endpoint.offsetInLeaf > leafLength) return leafLength;
+  return endpoint.offsetInLeaf;
 }

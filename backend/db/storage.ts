@@ -73,6 +73,30 @@ type ApiKeyRow = {
   updatedAt: string
 }
 
+type HighlightRow = {
+  id: string
+  message_id: string
+  branch_convo_id: string
+  start_offset: number
+  end_offset: number
+  quote: string
+  user_id: string | null
+  created_at: string
+}
+
+function mapHighlightRow(row: HighlightRow): Highlight {
+  return {
+    id: row.id,
+    messageId: row.message_id,
+    branchConvoId: row.branch_convo_id,
+    startOffset: row.start_offset,
+    endOffset: row.end_offset,
+    quote: row.quote,
+    userId: row.user_id,
+    createdAt: row.created_at,
+  }
+}
+
 export class InMemoryStorage implements Storage {
   //creates a map with key being convoId, value being a list of conversations
   private conversations: Map<string, Conversation> = new Map()
@@ -217,13 +241,15 @@ export class InMemoryStorage implements Storage {
   async getHighlightsByConvo(convoId: string): Promise<Highlight[]> {
     // Highlights whose source message belongs to this conversation.
     const convoMessageIds = new Set(
-      [...this.messages.values()].filter((m) => m.convoId === convoId).map((m) => m.id)
+      [...this.messages.values()]
+        .filter((message) => message.convoId === convoId)
+        .map((message) => message.id)
     )
-    return [...this.highlights.values()].filter((h) => convoMessageIds.has(h.messageId))
+    return [...this.highlights.values()].filter((highlight) => convoMessageIds.has(highlight.messageId))
   }
 
   async getHighlightByBranch(branchConvoId: string): Promise<Highlight | null> {
-    return [...this.highlights.values()].find((h) => h.branchConvoId === branchConvoId) ?? null
+    return [...this.highlights.values()].find((highlight) => highlight.branchConvoId === branchConvoId) ?? null
   }
 
   //for when a bubble is expanded to a full convo
@@ -250,9 +276,9 @@ export class InMemoryStorage implements Storage {
   // separate conversations row.
   async deleteMessage({ id }: { id: string }) {
     this.messages.delete(id)
-    for (const h of [...this.highlights.values()]) {
-      if (h.messageId === id) {
-        this.highlights.delete(h.id)
+    for (const highlight of [...this.highlights.values()]) {
+      if (highlight.messageId === id) {
+        this.highlights.delete(highlight.id)
       }
     }
   }
@@ -267,9 +293,9 @@ export class InMemoryStorage implements Storage {
     // it (message_id cascade); deleting the convo deletes highlights whose
     // branch_convo_id is this convo (branch_convo_id cascade).
     const deletedMessageIds = new Set(messagesToDelete.map((el) => el.id))
-    for (const h of [...this.highlights.values()]) {
-      if (deletedMessageIds.has(h.messageId) || h.branchConvoId === convoId) {
-        this.highlights.delete(h.id)
+    for (const highlight of [...this.highlights.values()]) {
+      if (deletedMessageIds.has(highlight.messageId) || highlight.branchConvoId === convoId) {
+        this.highlights.delete(highlight.id)
       }
     }
 
@@ -531,28 +557,19 @@ export class SupabaseStorage implements Storage {
 
     if (error) throw error
 
-    return {
-      id: data.id,
-      messageId: data.message_id,
-      branchConvoId: data.branch_convo_id,
-      startOffset: data.start_offset,
-      endOffset: data.end_offset,
-      quote: data.quote,
-      userId: data.user_id,
-      createdAt: data.created_at,
-    }
+    return mapHighlightRow(data)
   }
 
   async getHighlightsByConvo(convoId: string): Promise<Highlight[]> {
     // Highlights whose source message belongs to `convoId`. Resolve the convo's
     // message ids first, then fetch highlights anchored to any of them.
-    const { data: msgs, error: msgErr } = await supabaseAdmin
+    const { data: messages, error: messagesError } = await supabaseAdmin
       .from('messages')
       .select('id')
       .eq('convo_id', convoId)
 
-    if (msgErr) throw msgErr
-    const messageIds = (msgs ?? []).map((m) => m.id)
+    if (messagesError) throw messagesError
+    const messageIds = (messages ?? []).map((message: { id: string }) => message.id)
     if (messageIds.length === 0) return []
 
     const { data, error } = await supabaseAdmin
@@ -563,16 +580,7 @@ export class SupabaseStorage implements Storage {
 
     if (error) throw error
 
-    return (data ?? []).map((row) => ({
-      id: row.id,
-      messageId: row.message_id,
-      branchConvoId: row.branch_convo_id,
-      startOffset: row.start_offset,
-      endOffset: row.end_offset,
-      quote: row.quote,
-      userId: row.user_id,
-      createdAt: row.created_at,
-    }))
+    return (data ?? []).map(mapHighlightRow)
   }
 
   async getHighlightByBranch(branchConvoId: string): Promise<Highlight | null> {
@@ -585,16 +593,7 @@ export class SupabaseStorage implements Storage {
     if (error) throw error
     if (!data) return null
 
-    return {
-      id: data.id,
-      messageId: data.message_id,
-      branchConvoId: data.branch_convo_id,
-      startOffset: data.start_offset,
-      endOffset: data.end_offset,
-      quote: data.quote,
-      userId: data.user_id,
-      createdAt: data.created_at,
-    }
+    return mapHighlightRow(data)
   }
   async saveConversation({ convoId }: { convoId: string }) {
     const { data, error } = await supabaseAdmin

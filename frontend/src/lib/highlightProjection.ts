@@ -58,30 +58,8 @@ export interface LeafProjection {
 
 /** Coverage-depth -> background strength, matching the prior `<mark>` styling. */
 export function markBackground(depth: number): string {
-  const pct = Math.min(18 + (depth - 1) * 22, 85);
-  return `color-mix(in oklch, var(--primary) ${pct}%, transparent)`;
-}
-
-/** Highlight range length, for the smallest-range (most-specific) tie-break. */
-function rangeLength(h: ProjectedHighlight): number {
-  return h.endOffset - h.startOffset;
-}
-
-/**
- * Order covering highlights for click routing: smallest range first (most
- * specific), tie-broken by most-recently-created. `creationIndex` preserves the
- * caller's load order (backend returns createdAt-ascending), so a higher index
- * is more recent.
- */
-function orderBySpecificity(
-  covering: ProjectedHighlight[],
-  creationIndex: Map<string, number>,
-): ProjectedHighlight[] {
-  return [...covering].sort((a, b) => {
-    const lenDiff = rangeLength(a) - rangeLength(b);
-    if (lenDiff !== 0) return lenDiff;
-    return (creationIndex.get(b.id) ?? 0) - (creationIndex.get(a.id) ?? 0);
-  });
+  const backgroundPercentage = Math.min(18 + (depth - 1) * 22, 85);
+  return `color-mix(in oklch, var(--primary) ${backgroundPercentage}%, transparent)`;
 }
 
 /**
@@ -93,15 +71,61 @@ export function fittingHighlights(
   model: AnchorModel,
   highlights: ProjectedHighlight[],
 ): ProjectedHighlight[] {
-  const len = model.canonicalText.length;
+  const canonicalLength = model.canonicalText.length;
   return highlights.filter(
-    (h) =>
-      Number.isInteger(h.startOffset) &&
-      Number.isInteger(h.endOffset) &&
-      h.startOffset >= 0 &&
-      h.endOffset <= len &&
-      h.startOffset < h.endOffset,
+    (highlight) =>
+      Number.isInteger(highlight.startOffset) &&
+      Number.isInteger(highlight.endOffset) &&
+      highlight.startOffset >= 0 &&
+      highlight.endOffset <= canonicalLength &&
+      highlight.startOffset < highlight.endOffset,
   );
+}
+
+/**
+ * Project all fitting v2 highlights onto the model, returning per-leaf segment
+ * plans keyed by leaf index. The renderer walks leaves in document order and
+ * materializes each plan as marked/unmarked spans (prose/code) or atomic
+ * highlight state (math).
+ */
+export function projectHighlights(
+  model: AnchorModel,
+  highlights: ProjectedHighlight[],
+): LeafProjection[] {
+  const fitting = fittingHighlights(model, highlights);
+  const creationIndex = new Map<string, number>();
+  highlights.forEach((highlight, creationOrder) =>
+    creationIndex.set(highlight.id, creationOrder),
+  );
+  return model.leaves.map((leaf) =>
+    projectLeaf(leaf, fitting, creationIndex),
+  );
+}
+
+/** Highlight range length, for the smallest-range (most-specific) tie-break. */
+function rangeLength(highlight: ProjectedHighlight): number {
+  return highlight.endOffset - highlight.startOffset;
+}
+
+/**
+ * Order covering highlights for click routing: smallest range first (most
+ * specific), tie-broken by most-recently-created. `creationIndex` preserves the
+ * caller's load order (backend returns createdAt-ascending), so a higher index
+ * is more recent.
+ */
+function orderBySpecificity(
+  coveringHighlights: ProjectedHighlight[],
+  creationIndex: Map<string, number>,
+): ProjectedHighlight[] {
+  return [...coveringHighlights].sort((firstHighlight, secondHighlight) => {
+    const rangeLengthDifference =
+      rangeLength(firstHighlight) - rangeLength(secondHighlight);
+    if (rangeLengthDifference !== 0) return rangeLengthDifference;
+    return (
+      (creationIndex.get(secondHighlight.id) ?? 0) -
+      (creationIndex.get(firstHighlight.id) ?? 0)
+    );
+  });
 }
 
 /**
@@ -117,11 +141,12 @@ function projectLeaf(
   const isMath = leaf.kind === 'math';
 
   // Highlights touching this leaf's [start,end) canonical span.
-  const touching = highlights.filter(
-    (h) => h.startOffset < leaf.end && h.endOffset > leaf.start,
+  const touchingHighlights = highlights.filter(
+    (highlight) =>
+      highlight.startOffset < leaf.end && highlight.endOffset > leaf.start,
   );
 
-  if (touching.length === 0) {
+  if (touchingHighlights.length === 0) {
     return {
       leaf,
       marked: false,
@@ -147,8 +172,8 @@ function projectLeaf(
           localStart: 0,
           localEnd: leaf.value.length,
           text: leaf.value,
-          depth: touching.length,
-          covering: orderBySpecificity(touching, creationIndex),
+          depth: touchingHighlights.length,
+          covering: orderBySpecificity(touchingHighlights, creationIndex),
         },
       ],
     };
@@ -156,54 +181,47 @@ function projectLeaf(
 
   // Prose/code: sweep boundaries inside the leaf span (canonical coords).
   const boundarySet = new Set<number>([leaf.start, leaf.end]);
-  for (const h of touching) {
-    if (h.startOffset > leaf.start) boundarySet.add(h.startOffset);
-    if (h.endOffset < leaf.end) boundarySet.add(h.endOffset);
+  for (const highlight of touchingHighlights) {
+    if (highlight.startOffset > leaf.start)
+      boundarySet.add(highlight.startOffset);
+    if (highlight.endOffset < leaf.end)
+      boundarySet.add(highlight.endOffset);
   }
   const boundaries = [...boundarySet].sort((a, b) => a - b);
 
   const segments: LeafSegment[] = [];
-  for (let i = 0; i < boundaries.length - 1; i++) {
-    const segStart = boundaries[i];
-    const segEnd = boundaries[i + 1];
-    if (segEnd <= segStart) continue;
-    const mid = (segStart + segEnd) / 2;
-    const covering = touching.filter(
-      (h) => h.startOffset <= mid && mid < h.endOffset,
+  for (
+    let boundaryIndex = 0;
+    boundaryIndex < boundaries.length - 1;
+    boundaryIndex++
+  ) {
+    const segmentStart = boundaries[boundaryIndex];
+    const segmentEnd = boundaries[boundaryIndex + 1];
+    if (segmentEnd <= segmentStart) continue;
+    const segmentMidpoint = (segmentStart + segmentEnd) / 2;
+    const coveringHighlights = touchingHighlights.filter(
+      (highlight) =>
+        highlight.startOffset <= segmentMidpoint &&
+        segmentMidpoint < highlight.endOffset,
     );
     segments.push({
-      localStart: segStart - leaf.start,
-      localEnd: segEnd - leaf.start,
-      text: leaf.value.slice(segStart - leaf.start, segEnd - leaf.start),
-      depth: covering.length,
+      localStart: segmentStart - leaf.start,
+      localEnd: segmentEnd - leaf.start,
+      text: leaf.value.slice(
+        segmentStart - leaf.start,
+        segmentEnd - leaf.start,
+      ),
+      depth: coveringHighlights.length,
       covering:
-        covering.length === 0
+        coveringHighlights.length === 0
           ? []
-          : orderBySpecificity(covering, creationIndex),
+          : orderBySpecificity(coveringHighlights, creationIndex),
     });
   }
 
   return {
     leaf,
-    marked: segments.some((s) => s.depth > 0),
+    marked: segments.some((segment) => segment.depth > 0),
     segments,
   };
-}
-
-/**
- * Project all fitting v2 highlights onto the model, returning per-leaf segment
- * plans keyed by leaf index. The renderer walks leaves in document order and
- * materializes each plan as marked/unmarked spans (prose/code) or atomic
- * highlight state (math).
- */
-export function projectHighlights(
-  model: AnchorModel,
-  highlights: ProjectedHighlight[],
-): LeafProjection[] {
-  const fitting = fittingHighlights(model, highlights);
-  const creationIndex = new Map<string, number>();
-  highlights.forEach((h, i) => creationIndex.set(h.id, i));
-  return model.leaves.map((leaf) =>
-    projectLeaf(leaf, fitting, creationIndex),
-  );
 }
