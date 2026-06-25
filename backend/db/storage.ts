@@ -32,8 +32,9 @@ export interface Storage {
   deleteConversation({ convoId }: { convoId: string }): Promise<void>
 
   // ----- Branch-anchored highlights -----
-  // Insert a highlight and return the persisted row (camelCase).
-  createHighlight({ messageId, branchConvoId, startOffset, endOffset, quote, userId }: CreateHighlight): Promise<Highlight>
+  // Insert a highlight and return the persisted row (camelCase). A missing
+  // `anchorVersion` is persisted as 1 (the pre-renderer v1 coordinate space).
+  createHighlight({ messageId, branchConvoId, startOffset, endOffset, quote, userId, anchorVersion }: CreateHighlight): Promise<Highlight>
 
   // All highlights whose source message belongs to `convoId` (for rendering
   // marks when a conversation loads).
@@ -195,7 +196,7 @@ export class InMemoryStorage implements Storage {
 
   // ----- Branch-anchored highlights -----
 
-  async createHighlight({ messageId, branchConvoId, startOffset, endOffset, quote, userId }: CreateHighlight): Promise<Highlight> {
+  async createHighlight({ messageId, branchConvoId, startOffset, endOffset, quote, userId, anchorVersion }: CreateHighlight): Promise<Highlight> {
     if (endOffset <= startOffset) {
       throw new Error('end_offset must be greater than start_offset')
     }
@@ -208,6 +209,9 @@ export class InMemoryStorage implements Storage {
       quote,
       userId: userId ?? null,
       createdAt: new Date().toISOString(),
+      // Default to v1 (the pre-renderer all-text-node space) when unspecified,
+      // matching the DB column default — preserves any provided version verbatim.
+      anchorVersion: anchorVersion ?? 1,
     }
     this.highlights.set(highlight.id, highlight)
     return highlight
@@ -514,7 +518,7 @@ export class SupabaseStorage implements Storage {
 
   // ----- Branch-anchored highlights (camelCase ↔ snake_case mapping) -----
 
-  async createHighlight({ messageId, branchConvoId, startOffset, endOffset, quote, userId }: CreateHighlight): Promise<Highlight> {
+  async createHighlight({ messageId, branchConvoId, startOffset, endOffset, quote, userId, anchorVersion }: CreateHighlight): Promise<Highlight> {
     const { data, error } = await supabaseAdmin
       .from('highlights')
       .insert({
@@ -524,6 +528,9 @@ export class SupabaseStorage implements Storage {
         end_offset: endOffset,
         quote,
         user_id: userId ?? null,
+        // Default to v1 when unspecified, matching the column default. A provided
+        // version (incl. future > 2) is preserved verbatim.
+        anchor_version: anchorVersion ?? 1,
       })
       .select()
       .single()
@@ -539,6 +546,7 @@ export class SupabaseStorage implements Storage {
       quote: data.quote,
       userId: data.user_id,
       createdAt: data.created_at,
+      anchorVersion: data.anchor_version,
     }
   }
 
@@ -571,6 +579,7 @@ export class SupabaseStorage implements Storage {
       quote: row.quote,
       userId: row.user_id,
       createdAt: row.created_at,
+      anchorVersion: row.anchor_version,
     }))
   }
 
@@ -593,6 +602,7 @@ export class SupabaseStorage implements Storage {
       quote: data.quote,
       userId: data.user_id,
       createdAt: data.created_at,
+      anchorVersion: data.anchor_version,
     }
   }
   async saveConversation({ convoId }: { convoId: string }) {

@@ -232,7 +232,7 @@ app.post('/conversations', async (req: Request, res: Response) => {
     // convo back to the source message. Return { convoId, highlightId } — NOT
     // the message array (the frontend opens a mini-window from this shape).
     if (highlight) {
-      const { messageId, startOffset, endOffset, quote } = highlight
+      const { messageId, startOffset, endOffset, quote, anchorVersion } = highlight
       const source = typeof messageId === 'string'
         ? await storage.getMessage({ id: messageId })
         : null
@@ -255,6 +255,15 @@ app.post('/conversations', async (req: Request, res: Response) => {
         typeof quote === 'string' &&
         quote.trim().length > 0 &&
         quote.length <= 10_000
+      // anchorVersion is OPTIONAL. Absent → default to 1 (NOT 2): this phase
+      // ships before the v2 renderer (B3), so the current frontend still emits
+      // v1 (all-text-node) coordinates. Only once B3 lands does the frontend
+      // send anchorVersion: 2 explicitly. When provided it must be a positive
+      // integer; preserve it verbatim (future versions > 2 included) — never
+      // clamp.
+      const validAnchorVersion =
+        anchorVersion === undefined ||
+        (Number.isInteger(anchorVersion) && anchorVersion >= 1)
 
       if (
         !source ||
@@ -262,7 +271,8 @@ app.post('/conversations', async (req: Request, res: Response) => {
         !sourceConvo ||
         sourceConvo.userId !== session.user.id ||
         !validOffsets ||
-        !validQuote
+        !validQuote ||
+        !validAnchorVersion
       ) {
         return res.status(400).json({ error: "invalid highlight" })
       }
@@ -277,6 +287,7 @@ app.post('/conversations', async (req: Request, res: Response) => {
           endOffset,
           quote,
           userId: session.user.id,
+          anchorVersion: anchorVersion ?? 1,
         })
         return res.json({ convoId: branchConvo.id, highlightId: created.id })
       } catch (error) {
