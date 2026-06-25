@@ -4,6 +4,19 @@ Three independent fixes to bring the chat surface closer to the ChatGPT UI. Each
 can ship on its own; (1) and (2) are tiny, (3) is the substantive one because it
 touches the branch-highlight feature.
 
+## Implementation status (branch `feat/home-sidebar-and-rendering-integration`)
+- ✅ **#1 Persistent sidebar on home** — PR #40 (merged to integration).
+- ✅ **#2 Collapse toggle (offcanvas, route-owned trigger)** — PR #40.
+- ✅ **#3 Math/code rendering + v2 anchors** — landed in four reviewed phases:
+  - B1 `buildAnchorModel` v2 contract + golden tests — PR #41.
+  - B2 backend `anchor_version` migration + plumbing — PR #42.
+  - B3 v2 renderer (KaTeX + Shiki) + declarative capture; imperative `<mark>`
+    sweep removed — PR #43 (incl. backslash-math render fix).
+  - B4 DOM/Range selection-restore + sequence + v1-fallback fixtures — PR #44.
+- Gate on integration: **95 frontend tests + 73 backend tests pass; `bun run build` green.**
+- ⏳ Remaining: deploy branch → browser-validate the live render/round-trip →
+  clear-codex `/readability` review.
+
 ---
 
 ## 1. Persistent sidebar on home ("sidebar isn't available until you send a chat")
