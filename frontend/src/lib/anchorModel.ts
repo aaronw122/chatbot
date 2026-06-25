@@ -182,11 +182,36 @@ const backslashMathFromMarkdown = {
       const raw = this.sliceSerialize(token);
       const display = raw.startsWith('\\[');
       const tex = raw.slice(2, -2);
+      // CRITICAL: set the SAME `data.hName`/`hProperties`/`hChildren` that
+      // `mdast-util-math` puts on `$...$` / `$$...$$` nodes. `buildAnchorModel`
+      // ignores `data` (it reads only `type`/`value`), but the RENDERER runs
+      // remark-rehype, which needs this metadata to emit a
+      // `<code class="language-math …">` (display: wrapped in `<pre>`) that
+      // `rehype-katex` then typesets. Without it the node falls back to plain
+      // text and `\(…\)`/`\[…\]` render literally — desyncing the v2 cursor.
+      const data = display
+        ? {
+            hName: 'pre',
+            hChildren: [
+              {
+                type: 'element',
+                tagName: 'code',
+                properties: { className: ['language-math', 'math-display'] },
+                children: [{ type: 'text', value: tex }],
+              },
+            ],
+          }
+        : {
+            hName: 'code',
+            hProperties: { className: ['language-math', 'math-inline'] },
+            hChildren: [{ type: 'text', value: tex }],
+          };
       this.enter(
         {
           type: display ? 'math' : 'inlineMath',
           meta: null,
           value: tex,
+          data,
         },
         token,
       );
@@ -199,22 +224,34 @@ const backslashMathFromMarkdown = {
   },
 };
 
+/**
+ * Reusable remark plugin registering the backslash-math micromark + fromMarkdown
+ * extensions. This is the SINGLE shared parse semantics for `\(...\)` / `\[...\]`
+ * math: the model (`buildAnchorModel`) AND the renderer (`MarkdownContent`'s
+ * react-markdown pipeline) MUST both use it, so they produce identical
+ * `inlineMath` / `math` nodes. Diverging them desyncs the v2 coordinate cursor.
+ *
+ * Use it alongside `remarkGfm` + `remarkMath` (it only adds the backslash forms;
+ * `$...$` / `$$...$$` stay with `remark-math`).
+ */
+export function remarkBackslashMath(this: {
+  data(key: string): unknown[];
+}): void {
+  const data = this.data;
+  const micromarkExtensions =
+    (data.call(this, 'micromarkExtensions') as unknown[]) ?? [];
+  const fromMarkdownExtensions =
+    (data.call(this, 'fromMarkdownExtensions') as unknown[]) ?? [];
+  micromarkExtensions.push(backslashMathExtension);
+  fromMarkdownExtensions.push(backslashMathFromMarkdown);
+}
+
 /** Lazily-built processor so `buildAnchorModel` stays pure & allocation-light. */
 const processor = unified()
   .use(remarkParse)
   .use(remarkGfm)
   .use(remarkMath)
-  .use(function backslashMathPlugin(this: {
-    data(key: string): unknown[];
-  }) {
-    const data = this.data;
-    const micromarkExtensions =
-      (data.call(this, 'micromarkExtensions') as unknown[]) ?? [];
-    const fromMarkdownExtensions =
-      (data.call(this, 'fromMarkdownExtensions') as unknown[]) ?? [];
-    micromarkExtensions.push(backslashMathExtension);
-    fromMarkdownExtensions.push(backslashMathFromMarkdown);
-  });
+  .use(remarkBackslashMath);
 
 type MdastNode = Root | RootContent;
 

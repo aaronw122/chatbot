@@ -2,6 +2,8 @@ import { StrictMode } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router";
 import { createRoot } from "react-dom/client";
 import "./index.css";
+import "katex/dist/katex.min.css";
+import { initHighlighter } from "./lib/highlighter.ts";
 import App from "./App.tsx";
 import Session from "./pages/chat.tsx";
 import ConvoList from "./components/convoList.tsx";
@@ -66,20 +68,31 @@ function AppShell() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <ConvoProvider>
-      <MessageProvider>
-        <MiniProvider>
-          <SettingsProvider>
-            <BrowserRouter>
-              <SidebarProvider>
-                <AppShell />
-              </SidebarProvider>
-            </BrowserRouter>
-          </SettingsProvider>
-        </MiniProvider>
-      </MessageProvider>
-    </ConvoProvider>
-  </StrictMode>,
-);
+// Preinitialize the Shiki highlighter ONCE before mounting so the Markdown
+// render + declarative highlight projection run synchronously (see
+// lib/highlighter.ts and the §3 "preinitialize once, render synchronously"
+// execution model). If init fails, mount anyway — MarkdownContent tolerates a
+// null highlighter by rendering plain code, never crashing.
+function mount() {
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <ConvoProvider>
+        <MessageProvider>
+          <MiniProvider>
+            <SettingsProvider>
+              <BrowserRouter>
+                <SidebarProvider>
+                  <AppShell />
+                </SidebarProvider>
+              </BrowserRouter>
+            </SettingsProvider>
+          </MiniProvider>
+        </MessageProvider>
+      </ConvoProvider>
+    </StrictMode>,
+  );
+}
+
+void initHighlighter()
+  .catch(() => undefined)
+  .finally(mount);
