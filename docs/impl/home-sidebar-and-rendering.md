@@ -7,15 +7,19 @@ touches the branch-highlight feature.
 ## Implementation status (branch `feat/home-sidebar-and-rendering-integration`)
 - ✅ **#1 Persistent sidebar on home** — PR #40 (merged to integration).
 - ✅ **#2 Collapse toggle (offcanvas, route-owned trigger)** — PR #40.
-- ✅ **#3 Math/code rendering + v2 anchors** — landed in four reviewed phases:
-  - B1 `buildAnchorModel` v2 contract + golden tests — PR #41.
-  - B2 backend `anchor_version` migration + plumbing — PR #42.
-  - B3 v2 renderer (KaTeX + Shiki) + declarative capture; imperative `<mark>`
+- ✅ **#3 Math/code rendering + canonical-offset anchors** — landed in reviewed phases:
+  - B1 `buildAnchorModel` canonical-coordinate contract + golden tests — PR #41.
+  - B3 renderer (KaTeX + Shiki) + declarative capture; imperative `<mark>`
     sweep removed — PR #43 (incl. backslash-math render fix).
-  - B4 DOM/Range selection-restore + sequence + v1-fallback fixtures — PR #44.
-- Gate on integration: **95 frontend tests + 73 backend tests pass; `bun run build` green.**
-- ⏳ Remaining: deploy branch → browser-validate the live render/round-trip →
-  clear-codex `/readability` review.
+  - B4 DOM/Range selection-restore + sequence fixtures — PR #44.
+- **Scope cut (post-build):** the product is pre-launch with no real highlights to
+  preserve, so all anchor-**versioning** was dropped — no `anchor_version` column,
+  no migration, no v1/unknown fallback chip. Every highlight is the single
+  canonical coordinate system, stored in the existing `start_offset`/`end_offset`
+  columns. This reverts B2 entirely and the fallback parts of B3/B4. **No DB
+  change is required.**
+- ⏳ Remaining: rip out the versioning/migration/fallback; deploy branch →
+  browser-validate the live render/round-trip → clear-codex `/readability` review.
 
 ---
 
@@ -98,7 +102,7 @@ plugins. `package.json` has only `react-markdown` — no `remark-math`,
 
 **Library decision (locked):** Stay on **`react-markdown` + plugins** — we render
 to a React element tree we control, so branch highlights can be emitted
-declaratively inside that same tree from versioned semantic offsets.
+declaratively inside that same tree from canonical semantic offsets.
 Considered and **deferred: Streamdown** (Vercel's drop-in, purpose-built for AI
 streaming with incomplete-block styling) — it owns its own memoized component
 tree + bundles Shiki, which makes the custom `<mark>` anchoring fragile. Revisit
@@ -116,7 +120,7 @@ frontend bootstrap, create and cache the Shiki highlighter before mounting the
 React root. Pass that initialized instance to the shared Markdown component and
 use `rehypeShikiFromHighlighter` from `@shikijs/rehype/core` (the synchronous
 transformer path). For each raw-content revision, `MarkdownContent` synchronously
-builds one immutable anchor model, projects the current persisted v2 ranges onto
+builds one immutable anchor model, projects the current persisted ranges onto
 that model, and emits prose/code `<mark>` elements plus atomic-math highlight
 state while constructing the HAST/React tree. React alone owns those children:
 there is no layout-effect cleanup, text-node splitting, `replaceChild`, or other
@@ -171,23 +175,23 @@ no filter, the walker counts **both**, so:
 - A `<mark>` could be injected **inside** KaTeX's generated spans → corrupts the
   rendered formula.
 
-**Anchor compatibility and coordinate versions (locked):**
-- Persist `anchor_version` on every highlight and expose it as `anchorVersion`.
-  The migration adds the non-null column with default `1`, so every pre-renderer
-  row is explicitly version 1. New captures use version 2.
-- Version 1 means the existing bare-react-markdown, all-text-node DOM coordinate
-  space. Version 2 means the semantic coordinate stream below. Never interpret
-  v1 offsets as v2 offsets, and treat unknown versions the same as unresolved v1.
-- Compatibility policy is explicit invalidation, not best-effort relocation:
-  under the v2 renderer, v1/unknown anchors render no inline mark. Preserve the
-  branch and show a small unresolved-anchor fallback beside the source message,
-  using its saved quote and opening the branch on click/keyboard activation.
-  This prevents silent mis-anchoring while keeping every old branch accessible.
+**No anchor versioning (locked — pre-launch, no legacy highlights):**
+- There are no real persisted highlights to preserve, so we do **not** version
+  anchors. No `anchor_version` column, no migration, no v1/unknown fallback chip.
+- Every highlight uses the single canonical coordinate system defined below and
+  is stored in the existing `start_offset`/`end_offset` columns. The renderer
+  always projects stored offsets through `buildAnchorModel` and marks inline.
+- The only defensive case kept: an anchor whose range does not fit the current
+  model (e.g. content changed) is simply not marked — it is dropped, not
+  relocated. No fallback affordance, no version comparison.
+- (Any stale dev rows captured under the old all-text-node renderer may
+  mis-anchor; acceptable — wipe them if they appear. If a coordinate system
+  change is ever needed post-launch, reintroduce a version field then.)
 
-**Version 2 canonical coordinates and capture/rendering semantics (locked):**
+**Canonical coordinates and capture/rendering semantics (locked):**
 1. Define one pure, immutable `buildAnchorModel(rawMarkdown)` implementation and
    use its output unchanged for capture, persistence validation, and rendering.
-   Its v2 pipeline is fixed:
+   Its pipeline is fixed:
    - Tokenize/parse raw CommonMark + GFM with a syntax-aware math delimiter
      extension. Markdown code spans, fenced/indented code blocks, and
      Markdown-escaped delimiter text are recognized first and excluded from
@@ -206,12 +210,13 @@ no filter, the walker counts **both**, so:
      separators. Each `[start,end)` is a UTF-16 index into that string.
      Renderer-added text (MathML duplication, copy labels, line numbers, etc.)
      contributes nothing.
-   This algorithm and output are the immutable v2 contract. Any future parser,
-   delimiter, decoding, whitespace, traversal, or math-unit change that can
-   alter coordinates requires a new `anchorVersion`; it must never reinterpret
-   persisted v2 offsets in place.
-2. The shared renderer annotates rendered semantic leaves with their v2 spans.
-   It intersects persisted v2 ranges with those spans while creating the React
+   This algorithm and output are the immutable coordinate contract. Any future
+   parser, delimiter, decoding, whitespace, traversal, or math-unit change that
+   can alter coordinates would need a re-anchoring strategy (and, if real
+   highlights exist by then, a version field) — it must never silently
+   reinterpret persisted offsets in place.
+2. The shared renderer annotates rendered semantic leaves with their canonical
+   spans. It intersects persisted ranges with those spans while creating the React
    tree, splitting renderer-owned prose/code leaves into declarative marked and
    unmarked segments. Shiki token spans map back to the enclosing code-text
    spans. A KaTeX wrapper maps to its one math unit and receives atomic
@@ -233,7 +238,8 @@ no filter, the walker counts **both**, so:
    most-specific-branch click/keyboard target as text marks, applied to the
    formula's outer semantic wrapper so the visible formula is fully highlighted
    and accessible.
-6. Projection accepts only v2 anchors whose ranges fit the current model.
+6. Projection accepts only anchors whose ranges fit the current model (others are
+   silently dropped, not relocated or shown as a fallback).
    Selection capture is the only DOM-side operation: it reads rendered leaf-span
    metadata to map a `Range` back into the same model, including atomic math
    endpoint normalization, but never changes renderer-owned nodes. Each
@@ -253,21 +259,19 @@ no filter, the walker counts **both**, so:
 - Render a message with inline `$…$`, display `\[…\]`, and a ```code fence```:
   math typesets and code is highlighted.
 - Sequence tests cover first mount, each streaming content revision, and reload
-  with persisted v2 code highlights: each commit is produced declaratively from
+  with persisted code highlights: each commit is produced declaratively from
   the matching model + ranges, with no post-commit mutation or stale-revision
   DOM.
-- Golden `buildAnchorModel` fixtures lock v2 output for prose, escaped Markdown,
-  inline/fenced code containing math-like delimiters, `$`/`$$` math,
+- Golden `buildAnchorModel` fixtures lock canonical output for prose, escaped
+  Markdown, inline/fenced code containing math-like delimiters, `$`/`$$` math,
   `\(`/`\[` math, incomplete streaming delimiters, and mixed spans. Assert exact
   leaf kinds/values, UTF-16 `[start,end)` coordinates, and `canonicalText`.
-- V2 selection/restore fixtures cover prose before/after math and code,
+- Selection/restore fixtures cover prose before/after math and code,
   wholly-inside math, wholly-inside code, prose↔math, prose↔code, and math↔code
   ranges. Assert normalized persisted coordinates, visible marked segments,
   whole-formula atomic styling, exact code whitespace, and click routing.
-- A database fixture created before this renderer (no column before migration,
-  therefore migrated to `anchor_version = 1`) must restore as an unresolved
-  fallback, never as an inline v2 mark, and its fallback must still open the
-  saved branch. Add an unknown-version fixture with the same safe behavior.
+- An anchor whose range no longer fits the current model is silently dropped
+  (not marked, not relocated, no fallback affordance).
 
 ## Sequencing
 1 and 2 are independent and tiny — land first. 3 is larger and carries the
