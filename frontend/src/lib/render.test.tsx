@@ -39,4 +39,36 @@ describe('MarkdownContent — full React render', () => {
     expect(html).toMatch(/class="katex[^"]*"[^>]*data-anchor-kind="math"/);
     expect(html).toContain('data-branch-mark="true"');
   });
+
+  // Regression: `\(...\)` / `\[...\]` math must render via KaTeX AND keep the v2
+  // cursor in sync, so a highlight AFTER the math lands on the right text. The
+  // renderer's remark pipeline must share the model's backslash-math parse.
+  it('renders inline \\(...\\) via KaTeX and aligns a highlight after it', () => {
+    // canonical: "The value ￼ equals four always." (prose[0,10) math[10,11)
+    // prose[11,31)); "four" -> [19,23).
+    const md = 'The value \\(x^2\\) equals four always.';
+    const html = renderToStaticMarkup(
+      createElement(MarkdownContent, { content: md, highlights: [hl(19, 23)] }),
+    );
+    // math actually typeset (the original product bug — was literal prose before)
+    expect(html).toContain('katex');
+    expect(html).not.toContain('\\(x^2\\)'); // not left as literal text
+    // and "four" is correctly marked (cursor stayed aligned past the math unit)
+    expect(html).toMatch(/<mark[^>]*data-branch-id="h1"[^>]*>four<\/mark>/);
+  });
+
+  it('renders display \\[...\\] via KaTeX and aligns a highlight after it', () => {
+    // canonical: "Area ￼ done" (prose[0,5) math[5,6) prose[6,11)); "done" ->[7,11)
+    const md = 'Area \\[ \\text{Beta}(r,b) \\] done';
+    const html = renderToStaticMarkup(
+      createElement(MarkdownContent, { content: md, highlights: [hl(7, 11)] }),
+    );
+    // display math typeset by KaTeX, annotated as the atomic math leaf (NOT left
+    // as the literal `\[ … \]` delimiters in prose). KaTeX keeps the TeX in an
+    // <annotation>, so we assert on the wrapper, not the absence of TeX.
+    expect(html).toContain('katex-display');
+    expect(html).toContain('data-anchor-kind="math"');
+    expect(html).not.toContain('\\['); // delimiter not rendered literally
+    expect(html).toMatch(/<mark[^>]*data-branch-id="h1"[^>]*>done<\/mark>/);
+  });
 });

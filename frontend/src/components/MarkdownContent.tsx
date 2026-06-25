@@ -19,7 +19,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import rehypeShikiFromHighlighter from '@shikijs/rehype/core';
 import type { Highlight } from '../../../types/types';
-import { buildAnchorModel } from '@/lib/anchorModel';
+import { buildAnchorModel, remarkBackslashMath } from '@/lib/anchorModel';
 import {
   getHighlighter,
   SHIKI_FALLBACK_LANG,
@@ -112,7 +112,11 @@ const MarkdownContent = ({
       onKeyDown={onActivateBranch ? handleActivate : undefined}
     >
       <Markdown
-        remarkPlugins={[remarkGfm, remarkMath]}
+        // remarkBackslashMath MUST match the model's parse: it turns
+        // `\(...\)`/`\[...\]` into the same inlineMath/math nodes the model emits
+        // and rehype-katex consumes — without it those forms render as prose and
+        // desync the v2 cursor in rehypeAnchorMarks.
+        remarkPlugins={[remarkGfm, remarkMath, remarkBackslashMath]}
         rehypePlugins={rehypePlugins}
       >
         {content}
