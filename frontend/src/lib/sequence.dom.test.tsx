@@ -38,7 +38,6 @@ function hl(start: number, end: number, id: string, quote = 'q'): Highlight {
     quote,
     userId: null,
     createdAt: new Date().toISOString(),
-    anchorVersion: 2,
   };
 }
 
