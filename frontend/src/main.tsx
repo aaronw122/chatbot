@@ -11,7 +11,11 @@ import { ConvoProvider } from "./context/convoContext.tsx";
 import { MessageProvider } from "./context/messageContext.tsx";
 import { MiniProvider } from "./context/miniContext.tsx";
 import { SettingsProvider } from "./context/settingsContext.tsx";
-import { SidebarProvider, SidebarTrigger } from "./components/ui/sidebar.tsx";
+import {
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from "./components/ui/sidebar.tsx";
 import { MobileMenuButton } from "./components/mobileMenuButton.tsx";
 import { authClient } from "./lib/auth-client.ts";
 import SignUp from "./pages/signUp.tsx";
@@ -30,6 +34,7 @@ import SignUp from "./pages/signUp.tsx";
 function AppShell() {
   const location = useLocation();
   const { data: session } = authClient.useSession();
+  const { state } = useSidebar();
   const isHome = location.pathname === "/";
   const showSidebar = !!session;
   // The home page has no ChatHeader, so on mobile it needs its own slim top bar
@@ -40,10 +45,12 @@ function AppShell() {
     <div className="flex h-svh w-full overflow-hidden">
       {showSidebar && <ConvoList />}
       <main className="relative flex-1 flex flex-col h-svh min-w-0">
-        {isHome && (
-          // Desktop-only collapse/expand trigger for home. Absolutely positioned
-          // so it consumes no layout space and the centered landing column does
-          // not shift. The mobile home bar owns the hamburger on mobile.
+        {isHome && showSidebar && state === "collapsed" && (
+          // Desktop-only expand trigger for home, shown ONLY when the sidebar is
+          // collapsed (the collapse control itself lives inside the sidebar
+          // header, matching ChatGPT). Absolutely positioned so it consumes no
+          // layout space and the centered landing column does not shift. The
+          // mobile home bar owns the hamburger on mobile.
           <SidebarTrigger className="hidden md:flex absolute left-3 top-3 z-20" />
         )}
         {showMobileHomeBar && (

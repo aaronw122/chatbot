@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useSettings } from "@/context/settingsContext";
 import { MobileMenuButton } from "@/components/mobileMenuButton";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import services from "../services/index";
 import {
   PROVIDERS,
@@ -45,6 +45,12 @@ const selectionFromKeys = (keys: UserKeyMeta[]): Selection | null => {
 
 const ChatHeader = () => {
   const settings = useSettings();
+  const { state: sidebarState } = useSidebar();
+
+  // Desktop collapse/expand lives inside the sidebar header when it's open
+  // (matching ChatGPT). The header only surfaces the trigger to RE-open the
+  // sidebar once it's collapsed, so the two controls never both show at once.
+  const showSidebarTrigger = sidebarState === "collapsed";
 
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [keys, setKeys] = useState<UserKeyMeta[]>([]);
@@ -116,7 +122,7 @@ const ChatHeader = () => {
   if (!hasAnyKey) {
     return (
       <header className="flex h-14 items-center gap-2 border-b border-border bg-background px-4">
-        <SidebarTrigger className="hidden md:flex" />
+        {showSidebarTrigger && <SidebarTrigger className="hidden md:flex" />}
         <MobileMenuButton />
         <button
           type="button"
@@ -136,7 +142,7 @@ const ChatHeader = () => {
 
   return (
     <header className="flex h-14 items-center gap-3 border-b border-border bg-background px-4">
-      <SidebarTrigger className="hidden md:flex" />
+      {showSidebarTrigger && <SidebarTrigger className="hidden md:flex" />}
       <MobileMenuButton />
       <DropdownMenu>
         <DropdownMenuTrigger

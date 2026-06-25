@@ -11,6 +11,7 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarMenu,
+  SidebarTrigger,
 } from "./ui/sidebar";
 
 import { useConvo } from "@/context/convoContext";
@@ -36,11 +37,14 @@ const ConvoList = () => {
   return (
     <Sidebar collapsible="offcanvas">
       <SidebarHeader className="gap-3 px-3 pt-3">
-        <div className="flex items-center gap-2 px-1">
-          <img src="/logo.png" alt="" className="size-6 w-auto shrink-0" />
-          <h1 className="text-base font-bold tracking-tight text-primary group-data-[collapsible=icon]:hidden">
-            easybranch
-          </h1>
+        <div className="flex items-center justify-between gap-2 px-1">
+          <div className="flex items-center gap-2">
+            <img src="/logo.png" alt="" className="size-6 w-auto shrink-0" />
+            <h1 className="text-base font-bold tracking-tight text-primary">
+              easybranch
+            </h1>
+          </div>
+          <SidebarTrigger className="text-muted-foreground" />
         </div>
         <NewChat />
       </SidebarHeader>
