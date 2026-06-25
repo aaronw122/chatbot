@@ -1,7 +1,7 @@
-// Shared v2 markdown renderer used by BOTH message.tsx and miniMessage.tsx.
+// Shared markdown renderer used by BOTH message.tsx and miniMessage.tsx.
 //
 // Renders markdown with math (KaTeX) + syntax highlighting (Shiki, synchronous
-// preinitialized highlighter) and projects persisted v2 branch highlights
+// preinitialized highlighter) and projects persisted branch highlights
 // DECLARATIVELY inside the same React tree — no post-commit DOM mutation.
 //
 // Coordinate authority: `buildAnchorModel(content)` (see anchorModel.ts). The
@@ -35,17 +35,15 @@ export interface MarkdownContentProps {
   onActivateBranch?: (highlight: Highlight) => void;
 }
 
-/** Map persisted highlights to the projection shape (v2 ranges only). */
+/** Map persisted highlights to the projection shape. */
 function toProjected(highlights: Highlight[]): ProjectedHighlight[] {
-  return highlights
-    .filter((h) => h.anchorVersion === 2)
-    .map((h) => ({
-      id: h.id,
-      branchConvoId: h.branchConvoId,
-      startOffset: h.startOffset,
-      endOffset: h.endOffset,
-      quote: h.quote,
-    }));
+  return highlights.map((h) => ({
+    id: h.id,
+    branchConvoId: h.branchConvoId,
+    startOffset: h.startOffset,
+    endOffset: h.endOffset,
+    quote: h.quote,
+  }));
 }
 
 const MarkdownContent = ({
@@ -58,12 +56,13 @@ const MarkdownContent = ({
   // One immutable model per content revision (coordinate authority).
   const model = useMemo(() => buildAnchorModel(content), [content]);
 
-  // v2 projection inputs + a stable id->highlight lookup for delegated clicks.
+  // Projection inputs + a stable id->highlight lookup for delegated clicks.
+  // Out-of-range anchors (range doesn't fit the current model) are dropped by
+  // the projection itself; no version filtering happens here.
   const { projected, byId } = useMemo(() => {
-    const v2 = highlights.filter((h) => h.anchorVersion === 2);
     const map = new Map<string, Highlight>();
-    for (const h of v2) map.set(h.id, h);
-    return { projected: toProjected(v2), byId: map };
+    for (const h of highlights) map.set(h.id, h);
+    return { projected: toProjected(highlights), byId: map };
   }, [highlights]);
 
   const rehypePlugins = useMemo(() => {

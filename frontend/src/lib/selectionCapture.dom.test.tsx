@@ -84,7 +84,6 @@ function hl(start: number, end: number, id = 'h1'): Highlight {
     quote: FIXTURE,
     userId: null,
     createdAt: new Date().toISOString(),
-    anchorVersion: 2,
   };
 }
 

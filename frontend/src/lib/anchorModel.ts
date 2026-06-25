@@ -35,9 +35,12 @@
  * — the information is gone. The delimiters must therefore be recognized BEFORE
  * escape resolution, which is exactly what a micromark `text` construct does.
  *
- * ANY future change to the parser, delimiter set, decoding, whitespace handling,
- * traversal order, or the math unit that can alter coordinates REQUIRES a new
- * `anchorVersion`. It must NEVER reinterpret persisted v2 offsets in place.
+ * This algorithm and its output are the single immutable coordinate contract.
+ * Persisted offsets are interpreted only through this model; an anchor whose
+ * range no longer fits the current model is dropped, never relocated. ANY future
+ * change to the parser, delimiter set, decoding, whitespace handling, traversal
+ * order, or the math unit that can alter coordinates would require a deliberate
+ * re-anchoring strategy — never reinterpret persisted offsets in place.
  */
 
 import type { Root, RootContent } from 'mdast';

@@ -35,7 +35,6 @@ function persisted(range: CaptureRange, quote: string): Highlight {
     quote,
     userId: null,
     createdAt: new Date().toISOString(),
-    anchorVersion: 2,
   };
 }
 

@@ -11,7 +11,7 @@ function hl(start: number, end: number): Highlight {
   return {
     id: 'h1', messageId: 'm1', branchConvoId: 'c1',
     startOffset: start, endOffset: end, quote: 'q', userId: null,
-    createdAt: new Date().toISOString(), anchorVersion: 2,
+    createdAt: new Date().toISOString(),
   };
 }
 

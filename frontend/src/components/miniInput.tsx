@@ -54,8 +54,6 @@ const MiniInput = () => {
             startOffset: highlightRange.start,
             endOffset: highlightRange.end,
             quote,
-            // v2 renderer: captured offsets are semantic canonical coordinates.
-            anchorVersion: 2,
           },
         });
         if (!res?.convoId) return;

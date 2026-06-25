@@ -31,11 +31,11 @@ export interface CreateConversation {
   save?: true | false;
 }
 
-// A persisted branch-anchored highlight. Offsets are indices into the source
-// message's rendered text for the coordinate space named by `anchorVersion`
-// (v1 = bare react-markdown text-node concatenation; v2 = the semantic
-// canonical-text stream — see frontend/src/lib/textOffsets.ts and
-// buildAnchorModel). `branchConvoId` is the conversation the highlight opens.
+// A persisted branch-anchored highlight. Offsets are UTF-16 indices into the
+// source message's canonical-text stream — the single coordinate system
+// produced by buildAnchorModel (see frontend/src/lib/anchorModel.ts), stored in
+// the `start_offset`/`end_offset` columns. `branchConvoId` is the conversation
+// the highlight opens.
 export interface Highlight {
   id: string;
   messageId: string;
@@ -45,11 +45,6 @@ export interface Highlight {
   quote: string;
   userId: string | null;
   createdAt: string;
-  // Coordinate-space version the offsets belong to. v1 = pre-renderer
-  // all-text-node space; v2 = semantic canonical-text space. Never reinterpret
-  // offsets across versions; unknown/future versions are preserved verbatim and
-  // rendered as an unresolved fallback rather than a mis-placed inline mark.
-  anchorVersion: number;
 }
 
 // Request shape when creating a branch from a highlight. Sent to POST
@@ -60,10 +55,6 @@ export interface HighlightRequest {
   startOffset: number;
   endOffset: number;
   quote: string;
-  // Optional coordinate-space version of the offsets. Omitted by the current
-  // (pre-v2-renderer) frontend; the backend defaults a missing value to 1. Once
-  // the v2 renderer ships, capture sends 2 explicitly.
-  anchorVersion?: number;
 }
 
 export type MessageType = Anthropic.MessageParam & { convoId: string }
@@ -75,9 +66,6 @@ export interface CreateHighlight {
   endOffset: number;
   quote: string;
   userId?: string | null;
-  // Coordinate-space version of the offsets. Optional at the storage boundary;
-  // when omitted the storage layer persists 1 (the pre-renderer v1 space).
-  anchorVersion?: number;
 }
 
 export type Content = Anthropic.MessageParam["content"]
