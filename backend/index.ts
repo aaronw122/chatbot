@@ -224,21 +224,22 @@ app.post('/conversations', async (req: Request, res: Response) => {
       return res.status(404).json({error: "unauthorized"})
     }
 
-    const { content, save, withReply, highlight } = req.body
+    const { content, save, withReply, highlight: highlightRequest } = req.body
 
     // Branch creation (highlight present): create a HIDDEN (save:false) branch
     // conversation anchored to a span of an existing assistant message. Persist
     // the user's typed question, then record the highlight linking this new
     // convo back to the source message. Return { convoId, highlightId } — NOT
     // the message array (the frontend opens a mini-window from this shape).
-    if (highlight) {
-      const { messageId, startOffset, endOffset, quote } = highlight
-      const source = typeof messageId === 'string'
+    if (highlightRequest) {
+      const { messageId, startOffset, endOffset, quote } = highlightRequest
+      const sourceMessage = typeof messageId === 'string'
         ? await storage.getMessage({ id: messageId })
         : null
-      const sourceConvo = source
-        ? await storage.getConversation({ convoId: source.convoId })
+      const sourceConversation = sourceMessage
+        ? await storage.getConversation({ convoId: sourceMessage.convoId })
         : null
+
       // NOTE: startOffset/endOffset and `quote` live in the FRONTEND's rendered
       // text-node coordinate space (see frontend/src/lib/textOffsets.ts), NOT
       // the raw markdown stored in source.content. They are opaque to the
@@ -246,41 +247,41 @@ app.post('/conversations', async (req: Request, res: Response) => {
       // `quote` is used for the model preamble + tooltip. Do NOT validate them
       // against source.content (rendered text strips markdown / collapses
       // whitespace, so any formatted reply would fail). Validate shape only.
-      const validOffsets =
+      const hasValidOffsets =
         Number.isInteger(startOffset) &&
         Number.isInteger(endOffset) &&
         startOffset >= 0 &&
         endOffset > startOffset
-      const validQuote =
+      const hasValidQuote =
         typeof quote === 'string' &&
         quote.trim().length > 0 &&
         quote.length <= 10_000
 
       if (
-        !source ||
-        source.role !== 'assistant' ||
-        !sourceConvo ||
-        sourceConvo.userId !== session.user.id ||
-        !validOffsets ||
-        !validQuote
+        !sourceMessage ||
+        sourceMessage.role !== 'assistant' ||
+        !sourceConversation ||
+        sourceConversation.userId !== session.user.id ||
+        !hasValidOffsets ||
+        !hasValidQuote
       ) {
         return res.status(400).json({ error: "invalid highlight" })
       }
 
-      const branchConvo = await storage.createConversation({ content: content, userId: session.user.id, save: false })
+      const branchConversation = await storage.createConversation({ content: content, userId: session.user.id, save: false })
       try {
-        await storage.addMessage({ convoId: branchConvo.id, content: content, role: "user" })
-        const created = await storage.createHighlight({
+        await storage.addMessage({ convoId: branchConversation.id, content: content, role: "user" })
+        const createdHighlight = await storage.createHighlight({
           messageId,
-          branchConvoId: branchConvo.id,
+          branchConvoId: branchConversation.id,
           startOffset,
           endOffset,
           quote,
           userId: session.user.id,
         })
-        return res.json({ convoId: branchConvo.id, highlightId: created.id })
+        return res.json({ convoId: branchConversation.id, highlightId: createdHighlight.id })
       } catch (error) {
-        await storage.deleteConversation({ convoId: branchConvo.id }).catch((rollbackError) => {
+        await storage.deleteConversation({ convoId: branchConversation.id }).catch((rollbackError) => {
           console.error('failed to roll back branch conversation', rollbackError)
         })
         throw error
@@ -328,15 +329,15 @@ app.get('/conversations/:id/highlights', async (req: Request, res: Response) => 
       return res.status(401).json({ error: "unauthorized" })
     }
 
-    const id = req.params.id as string
+    const conversationId = req.params.id as string
 
-    const convo = await storage.getConversation({ convoId: id })
-    if (!convo || convo.userId !== session.user.id) {
+    const conversation = await storage.getConversation({ convoId: conversationId })
+    if (!conversation || conversation.userId !== session.user.id) {
       return res.status(404).json({ error: "not found" })
     }
 
-    const highlights = await storage.getHighlightsByConvo(id)
-    res.json(highlights)
+    const conversationHighlights = await storage.getHighlightsByConvo(conversationId)
+    res.json(conversationHighlights)
   }
   catch (error) {
     console.error('failed to get highlights for convo', error)

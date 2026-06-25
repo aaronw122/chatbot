@@ -98,7 +98,7 @@ function tokenizeBackslashMath(
   ok: State,
   nok: State,
 ): State {
-  let closeOpener: MathConstruct;
+  let closingDelimiter: MathConstruct;
 
   return start;
 
@@ -115,9 +115,9 @@ function tokenizeBackslashMath(
 
   function afterOpenBackslash(code: MathConstruct): State | undefined {
     if (code === LEFT_PAREN) {
-      closeOpener = RIGHT_PAREN;
+      closingDelimiter = RIGHT_PAREN;
     } else if (code === LEFT_BRACKET) {
-      closeOpener = RIGHT_BRACKET;
+      closingDelimiter = RIGHT_BRACKET;
     } else {
       return nok(code);
     }
@@ -139,7 +139,7 @@ function tokenizeBackslashMath(
   }
 
   function afterCloseBackslash(code: MathConstruct): State | undefined {
-    if (code === closeOpener) {
+    if (code === closingDelimiter) {
       effects.consume(code);
       effects.exit('backslashMath' as 'data');
       return ok;
@@ -288,7 +288,7 @@ export function buildAnchorModel(rawMarkdown: string): AnchorModel {
   const leaves: Leaf[] = [];
   let canonicalText = '';
 
-  const push = (kind: LeafKind, value: string, tex?: string): void => {
+  const appendLeaf = (kind: LeafKind, value: string, tex?: string): void => {
     if (value.length === 0) return;
     const start = canonicalText.length;
     canonicalText += value;
@@ -298,27 +298,27 @@ export function buildAnchorModel(rawMarkdown: string): AnchorModel {
     leaves.push(leaf);
   };
 
-  const walk = (node: MdastNode): void => {
+  const visitNode = (node: MdastNode): void => {
     if (MATH_TYPES.has(node.type)) {
       const tex = hasValue(node) ? node.value : '';
-      push('math', MATH_PLACEHOLDER, tex);
+      appendLeaf('math', MATH_PLACEHOLDER, tex);
       return;
     }
     if (CODE_TYPES.has(node.type)) {
-      push('code', hasValue(node) ? node.value : '');
+      appendLeaf('code', hasValue(node) ? node.value : '');
       return;
     }
     if (PROSE_TYPES.has(node.type)) {
-      push('prose', hasValue(node) ? node.value : '');
+      appendLeaf('prose', hasValue(node) ? node.value : '');
       return;
     }
     // Structural node: contributes nothing itself; recurse in document order.
     if (hasChildren(node)) {
-      for (const child of node.children) walk(child);
+      for (const child of node.children) visitNode(child);
     }
   };
 
-  walk(tree);
+  visitNode(tree);
 
   return { canonicalText, leaves };
 }

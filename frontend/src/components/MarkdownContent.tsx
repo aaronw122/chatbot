@@ -36,13 +36,13 @@ export interface MarkdownContentProps {
 }
 
 /** Map persisted highlights to the projection shape. */
-function toProjected(highlights: Highlight[]): ProjectedHighlight[] {
-  return highlights.map((h) => ({
-    id: h.id,
-    branchConvoId: h.branchConvoId,
-    startOffset: h.startOffset,
-    endOffset: h.endOffset,
-    quote: h.quote,
+function projectHighlights(highlights: Highlight[]): ProjectedHighlight[] {
+  return highlights.map((highlight) => ({
+    id: highlight.id,
+    branchConvoId: highlight.branchConvoId,
+    startOffset: highlight.startOffset,
+    endOffset: highlight.endOffset,
+    quote: highlight.quote,
   }));
 }
 
@@ -54,15 +54,20 @@ const MarkdownContent = ({
   const highlighter = getHighlighter();
 
   // One immutable model per content revision (coordinate authority).
-  const model = useMemo(() => buildAnchorModel(content), [content]);
+  const anchorModel = useMemo(() => buildAnchorModel(content), [content]);
 
   // Projection inputs + a stable id->highlight lookup for delegated clicks.
   // Out-of-range anchors (range doesn't fit the current model) are dropped by
   // the projection itself; no version filtering happens here.
-  const { projected, byId } = useMemo(() => {
-    const map = new Map<string, Highlight>();
-    for (const h of highlights) map.set(h.id, h);
-    return { projected: toProjected(highlights), byId: map };
+  const { projectedHighlights, highlightsById } = useMemo(() => {
+    const highlightLookup = new Map<string, Highlight>();
+    for (const highlight of highlights) {
+      highlightLookup.set(highlight.id, highlight);
+    }
+    return {
+      projectedHighlights: projectHighlights(highlights),
+      highlightsById: highlightLookup,
+    };
   }, [highlights]);
 
   const rehypePlugins = useMemo(() => {
@@ -80,35 +85,40 @@ const MarkdownContent = ({
       ]);
     }
     // Anchor marks run LAST so it sees KaTeX + Shiki output.
-    plugins.push([rehypeAnchorMarks, { model, highlights: projected }]);
+    plugins.push([
+      rehypeAnchorMarks,
+      { model: anchorModel, highlights: projectedHighlights },
+    ]);
     return plugins;
     // `highlighter` is a stable singleton; included for correctness.
-  }, [highlighter, model, projected]);
+  }, [highlighter, anchorModel, projectedHighlights]);
 
   // Delegated branch activation: marks carry data-branch-id.
-  const handleActivate = (e: React.MouseEvent | React.KeyboardEvent): void => {
+  const handleBranchActivation = (
+    event: React.MouseEvent | React.KeyboardEvent,
+  ): void => {
     if (!onActivateBranch) return;
-    const target = (e.target as HTMLElement | null)?.closest?.(
+    const branchElement = (event.target as HTMLElement | null)?.closest?.(
       '[data-branch-id]',
     );
-    if (!target) return;
-    const id = target.getAttribute('data-branch-id');
-    if (!id) return;
-    const highlight = byId.get(id);
+    if (!branchElement) return;
+    const branchId = branchElement.getAttribute('data-branch-id');
+    if (!branchId) return;
+    const highlight = highlightsById.get(branchId);
     if (!highlight) return;
-    if (e.type === 'keydown') {
-      const key = (e as React.KeyboardEvent).key;
+    if (event.type === 'keydown') {
+      const key = (event as React.KeyboardEvent).key;
       if (key !== 'Enter' && key !== ' ') return;
-      e.preventDefault();
+      event.preventDefault();
     }
-    e.stopPropagation();
+    event.stopPropagation();
     onActivateBranch(highlight);
   };
 
   return (
     <div
-      onClick={onActivateBranch ? handleActivate : undefined}
-      onKeyDown={onActivateBranch ? handleActivate : undefined}
+      onClick={onActivateBranch ? handleBranchActivation : undefined}
+      onKeyDown={onActivateBranch ? handleBranchActivation : undefined}
     >
       <Markdown
         // remarkBackslashMath MUST match the model's parse: it turns

@@ -16,12 +16,39 @@ import {
 
 const SEG_START_ATTR = 'data-anchor-seg-start';
 
+/**
+ * Map a DOM Range to normalized v2 canonical coordinates. Returns null when the
+ * range falls outside the container or is empty after math normalization.
+ */
+export function rangeToAnchorOffsets(
+  container: HTMLElement,
+  range: Range,
+): CaptureRange | null {
+  if (!container.contains(range.startContainer)) return null;
+  if (!container.contains(range.endContainer)) return null;
+
+  const startEndpoint = resolveEndpoint(
+    container,
+    range.startContainer,
+    range.startOffset,
+  );
+  const endEndpoint = resolveEndpoint(
+    container,
+    range.endContainer,
+    range.endOffset,
+  );
+  if (!startEndpoint || !endEndpoint) return null;
+
+  return captureRangeFromEndpoints(startEndpoint, endEndpoint);
+}
+
 /** Nearest ancestor element (inclusive) carrying leaf-span metadata. */
-function closestAnchorEl(node: Node | null): HTMLElement | null {
-  let el: Node | null = node;
-  while (el && el.nodeType !== Node.ELEMENT_NODE) el = el.parentNode;
-  if (!el) return null;
-  return (el as HTMLElement).closest(`[${ANCHOR_START_ATTR}]`);
+function closestAnchorElement(node: Node | null): HTMLElement | null {
+  let element: Node | null = node;
+  while (element && element.nodeType !== Node.ELEMENT_NODE)
+    element = element.parentNode;
+  if (!element) return null;
+  return (element as HTMLElement).closest(`[${ANCHOR_START_ATTR}]`);
 }
 
 /**
@@ -37,12 +64,13 @@ function resolveEndpoint(
   boundaryNode: Node,
   offset: number,
 ): CaptureEndpoint | null {
-  const anchorEl = closestAnchorEl(boundaryNode);
-  if (!anchorEl || !container.contains(anchorEl)) return null;
+  const anchorElement = closestAnchorElement(boundaryNode);
+  if (!anchorElement || !container.contains(anchorElement)) return null;
 
-  const leafStart = Number(anchorEl.getAttribute(ANCHOR_START_ATTR));
-  const leafEnd = Number(anchorEl.getAttribute(ANCHOR_END_ATTR));
-  const kind = (anchorEl.getAttribute(ANCHOR_KIND_ATTR) ?? 'prose') as LeafKind;
+  const leafStart = Number(anchorElement.getAttribute(ANCHOR_START_ATTR));
+  const leafEnd = Number(anchorElement.getAttribute(ANCHOR_END_ATTR));
+  const kind = (anchorElement.getAttribute(ANCHOR_KIND_ATTR) ??
+    'prose') as LeafKind;
   if (!Number.isFinite(leafStart) || !Number.isFinite(leafEnd)) return null;
 
   if (kind === 'math') {
@@ -50,25 +78,29 @@ function resolveEndpoint(
   }
 
   // Prose/code: the boundary's segment carries an absolute canonical seg-start.
-  // The segment element is the anchorEl itself for plain/mark spans; for nested
+  // The segment element is the anchorElement itself for plain/mark spans; for nested
   // Shiki tokens the seg metadata sits on the rewritten mark/span ancestor.
-  const segEl =
+  const segmentElement =
     (boundaryNode.nodeType === Node.ELEMENT_NODE
       ? (boundaryNode as HTMLElement)
-      : (boundaryNode.parentElement ?? anchorEl)
-    ).closest(`[${SEG_START_ATTR}]`) ?? anchorEl;
-  const segStartAttr = segEl.getAttribute(SEG_START_ATTR);
-  const segStart =
-    segStartAttr !== null ? Number(segStartAttr) : leafStart;
+      : (boundaryNode.parentElement ?? anchorElement)
+    ).closest(`[${SEG_START_ATTR}]`) ?? anchorElement;
+  const segmentStartAttribute = segmentElement.getAttribute(SEG_START_ATTR);
+  const segmentStart =
+    segmentStartAttribute !== null ? Number(segmentStartAttribute) : leafStart;
 
   // Offset within the segment's own text up to the boundary node+offset.
-  const localInSeg = textOffsetWithin(segEl, boundaryNode, offset);
-  const canonical = segStart + localInSeg;
+  const offsetWithinSegment = textOffsetWithin(
+    segmentElement,
+    boundaryNode,
+    offset,
+  );
+  const canonicalOffset = segmentStart + offsetWithinSegment;
   return {
     leafStart,
     leafEnd,
     kind,
-    offsetInLeaf: canonical - leafStart,
+    offsetInLeaf: canonicalOffset - leafStart,
   };
 }
 
@@ -84,43 +116,26 @@ function textOffsetWithin(
 ): number {
   // Boundary directly on the segment element: offset indexes childNodes.
   if (boundaryNode.nodeType === Node.ELEMENT_NODE && boundaryNode === root) {
-    let acc = 0;
-    for (let i = 0; i < offset && i < root.childNodes.length; i++) {
-      acc += root.childNodes[i].textContent?.length ?? 0;
+    let accumulatedOffset = 0;
+    for (
+      let childIndex = 0;
+      childIndex < offset && childIndex < root.childNodes.length;
+      childIndex++
+    ) {
+      accumulatedOffset +=
+        root.childNodes[childIndex].textContent?.length ?? 0;
     }
-    return acc;
+    return accumulatedOffset;
   }
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let acc = 0;
+  let accumulatedOffset = 0;
   let current = walker.nextNode();
   while (current) {
-    if (current === boundaryNode) return acc + offset;
-    acc += current.nodeValue?.length ?? 0;
+    if (current === boundaryNode) return accumulatedOffset + offset;
+    accumulatedOffset += current.nodeValue?.length ?? 0;
     current = walker.nextNode();
   }
   // Boundary not a descendant text node (e.g. element boundary inside root):
   // fall back to text length preceding it.
-  return acc;
-}
-
-/**
- * Map a DOM Range to normalized v2 canonical coordinates. Returns null when the
- * range falls outside the container or is empty after math normalization.
- */
-export function rangeToAnchorOffsets(
-  container: HTMLElement,
-  range: Range,
-): CaptureRange | null {
-  if (!container.contains(range.startContainer)) return null;
-  if (!container.contains(range.endContainer)) return null;
-
-  const startEp = resolveEndpoint(
-    container,
-    range.startContainer,
-    range.startOffset,
-  );
-  const endEp = resolveEndpoint(container, range.endContainer, range.endOffset);
-  if (!startEp || !endEp) return null;
-
-  return captureRangeFromEndpoints(startEp, endEp);
+  return accumulatedOffset;
 }

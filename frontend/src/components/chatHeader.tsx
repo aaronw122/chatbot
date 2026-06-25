@@ -32,11 +32,15 @@ import {
 type Selection = { provider: Provider; model: string };
 
 const selectionFromKeys = (keys: UserKeyMeta[]): Selection | null => {
-  const active = keys.find((k) => k.isActive);
-  if (active) return { provider: active.provider, model: active.model };
+  const activeKey = keys.find((key) => key.isActive);
+  if (activeKey) {
+    return { provider: activeKey.provider, model: activeKey.model };
+  }
   // No explicit active flag but a key exists — reflect the first configured one.
-  const first = keys[0];
-  return first ? { provider: first.provider, model: first.model } : null;
+  const firstKey = keys[0];
+  return firstKey
+    ? { provider: firstKey.provider, model: firstKey.model }
+    : null;
 };
 
 const ChatHeader = () => {
@@ -49,7 +53,7 @@ const ChatHeader = () => {
   const [switching, setSwitching] = useState(false);
 
   // Reconcile local state from the backend's source of truth.
-  const reconcile = async () => {
+  const refreshHeaderStateFromBackend = async () => {
     try {
       const [fetchedModels, fetchedKeys] = await Promise.all([
         services.getModels(),
@@ -58,28 +62,26 @@ const ChatHeader = () => {
       setModels(fetchedModels);
       setKeys(fetchedKeys);
       setSelection(selectionFromKeys(fetchedKeys));
-    } catch (e) {
-      console.error("failed to load header models/keys", e);
+    } catch (loadError) {
+      console.error("failed to load header models/keys", loadError);
     }
   };
 
   useEffect(() => {
-    void reconcile();
+    void refreshHeaderStateFromBackend();
     // Re-sync when the Settings dialog closes — the user may have added/removed a
     // key or changed the active provider/model there.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const settingsOpen = settings?.open ?? false;
   useEffect(() => {
-    if (!settingsOpen) void reconcile();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!settingsOpen) void refreshHeaderStateFromBackend();
   }, [settingsOpen]);
 
   // Providers the user actually has a key for — only these can be switched to
   // (switching to an unconfigured provider would 404 on POST /api/keys/active).
-  const configuredProviders = PROVIDERS.filter((p) =>
-    keys.some((k) => k.provider === p),
+  const configuredProviders = PROVIDERS.filter((provider) =>
+    keys.some((key) => key.provider === provider),
   );
   const hasAnyKey = configuredProviders.length > 0;
 
@@ -88,22 +90,22 @@ const ChatHeader = () => {
   const isSelected = (provider: Provider, model: string) =>
     selection?.provider === provider && selection?.model === model;
 
-  const handleSelect = async (provider: Provider, model: string) => {
+  const handleModelSelect = async (provider: Provider, model: string) => {
     if (isSelected(provider, model)) return;
-    const previous = selection;
+    const previousSelection = selection;
     // Optimistic update.
     setSelection({ provider, model });
     setError(null);
     setSwitching(true);
     try {
       await services.setActiveProvider(provider, model);
-    } catch (e) {
+    } catch (switchError) {
       // Roll back the optimistic selection and surface a brief error, then
       // reconcile actual state from the backend.
-      console.error("failed to switch provider/model", e);
-      setSelection(previous);
+      console.error("failed to switch provider/model", switchError);
+      setSelection(previousSelection);
       setError("Couldn't switch model. Try again.");
-      void reconcile();
+      void refreshHeaderStateFromBackend();
     } finally {
       setSwitching(false);
     }
@@ -148,11 +150,11 @@ const ChatHeader = () => {
           align="start"
           className="min-w-56 rounded-lg border border-border shadow-md"
         >
-          {configuredProviders.map((provider, idx) => {
+          {configuredProviders.map((provider, providerIndex) => {
             const providerModels = models?.[provider] ?? [];
             return (
               <div key={provider}>
-                {idx > 0 && <DropdownMenuSeparator />}
+                {providerIndex > 0 && <DropdownMenuSeparator />}
                 <DropdownMenuLabel className="text-xs text-muted-foreground">
                   {PROVIDER_LABELS[provider]}
                 </DropdownMenuLabel>
@@ -164,7 +166,7 @@ const ChatHeader = () => {
                   providerModels.map((model) => (
                     <DropdownMenuItem
                       key={`${provider}:${model}`}
-                      onSelect={() => void handleSelect(provider, model)}
+                      onSelect={() => void handleModelSelect(provider, model)}
                       className={
                         isSelected(provider, model)
                           ? "bg-accent text-accent-foreground"

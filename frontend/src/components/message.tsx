@@ -15,15 +15,15 @@ const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
   // owns all marks declaratively, so this ref is NEVER mutated post-commit.
   const contentRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
-  const mini = useMini();
+  const miniContext = useMini();
 
-  if (!mini) throw new Error("useMini didnt work");
+  if (!miniContext) throw new Error("useMini didnt work");
 
-  const show = (el: HTMLElement) => {
-    el.style.display = "block";
+  const showReplyButton = (replyButton: HTMLElement) => {
+    replyButton.style.display = "block";
   };
-  const hide = (el: HTMLElement) => {
-    el.style.display = "none";
+  const hideReplyButton = (replyButton: HTMLElement) => {
+    replyButton.style.display = "none";
   };
 
   const handleCopy = async () => {
@@ -38,23 +38,23 @@ const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
 
   // Open the branch for a highlight's inline mark. Reopening loads the branch's
   // saved history, not a fresh anchor.
-  const openBranch = async (h: Highlight) => {
-    mini.setMiniOpen(true);
-    mini.setMiniMessage(null);
-    mini.setSourceMessageId(null);
-    mini.setHighlightRange(null);
-    mini.setSelectedText(null);
-    mini.setQuote(h.quote);
-    mini.setMiniConvoId(h.branchConvoId);
+  const openHighlightBranch = async (highlight: Highlight) => {
+    miniContext.setMiniOpen(true);
+    miniContext.setMiniMessage(null);
+    miniContext.setSourceMessageId(null);
+    miniContext.setHighlightRange(null);
+    miniContext.setSelectedText(null);
+    miniContext.setQuote(highlight.quote);
+    miniContext.setMiniConvoId(highlight.branchConvoId);
     try {
-      const messages = await services.getMessages(h.branchConvoId);
-      mini.setMiniChatHistory(messages ?? null);
+      const messages = await services.getMessages(highlight.branchConvoId);
+      miniContext.setMiniChatHistory(messages ?? null);
     } catch {
-      mini.setMiniChatHistory(null);
+      miniContext.setMiniChatHistory(null);
     }
   };
 
-  const mouseUpHandler = async () => {
+  const handleSelectionMouseUp = async () => {
     const replyButton = replyRef.current;
     if (!replyButton) return;
 
@@ -62,49 +62,65 @@ const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
     const selectedText = selection?.toString().trim();
 
     if (!selection || !selectedText || selectedText.length === 0) {
-      hide(replyButton);
+      hideReplyButton(replyButton);
       return;
     }
 
     //get first node of selected text
-    const range = selection.getRangeAt(0);
-    const rect = range.getClientRects()[0];
-    if (!rect) return hide(replyButton);
+    const selectionRange = selection.getRangeAt(0);
+    const selectionRect = selectionRange.getClientRects()[0];
+    if (!selectionRect) return hideReplyButton(replyButton);
     //library computes position of the selection
-    await computePosition({ getBoundingClientRect: () => rect }, replyButton, {
-      placement: "top",
-      middleware: [offset(8), flip(), shift({ padding: 8 })],
-    }).then(({ x, y }) => {
-      Object.assign(replyButton.style, { left: `${x}px`, top: `${y}px` });
+    await computePosition(
+      { getBoundingClientRect: () => selectionRect },
+      replyButton,
+      {
+        placement: "top",
+        middleware: [offset(8), flip(), shift({ padding: 8 })],
+      },
+    ).then(({ x: left, y: top }) => {
+      Object.assign(replyButton.style, {
+        left: `${left}px`,
+        top: `${top}px`,
+      });
     });
-    show(replyButton);
+    showReplyButton(replyButton);
   };
 
   // Capture the selection as canonical offsets when reply is clicked. Maps the
   // DOM Range back into the model via leaf-span metadata (domCapture), applying
   // atomic-math endpoint normalization.
   const handleReplyClick = () => {
-    const container = contentRef.current;
+    const contentContainer = contentRef.current;
     const selection = window.getSelection();
-    const text = selection?.toString().trim();
+    const selectedText = selection?.toString().trim();
 
-    if (text && container && selection && selection.rangeCount > 0 && id) {
-      const range = selection.getRangeAt(0);
-      const anchored = rangeToAnchorOffsets(container, range);
-      if (anchored) {
-        const quote = (selection.toString() || text).trim();
-        mini.setSourceMessageId(id);
-        mini.setHighlightRange(anchored);
-        mini.setQuote(quote);
-        mini.setSelectedText(quote);
-        mini.setMiniOpen(true);
-        mini.setMiniChatHistory(null);
-        mini.setMiniConvoId(null);
-        mini.setMiniMessage(null);
+    if (
+      selectedText &&
+      contentContainer &&
+      selection &&
+      selection.rangeCount > 0 &&
+      id
+    ) {
+      const selectionRange = selection.getRangeAt(0);
+      const highlightRange = rangeToAnchorOffsets(
+        contentContainer,
+        selectionRange,
+      );
+      if (highlightRange) {
+        const quote = (selection.toString() || selectedText).trim();
+        miniContext.setSourceMessageId(id);
+        miniContext.setHighlightRange(highlightRange);
+        miniContext.setQuote(quote);
+        miniContext.setSelectedText(quote);
+        miniContext.setMiniOpen(true);
+        miniContext.setMiniChatHistory(null);
+        miniContext.setMiniConvoId(null);
+        miniContext.setMiniMessage(null);
       }
     }
     window.getSelection()?.removeAllRanges();
-    hide(replyRef.current!);
+    hideReplyButton(replyRef.current!);
   };
 
   return role === "user" ? (
@@ -112,7 +128,7 @@ const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
       {content}
     </div>
   ) : (
-    <div className="group" onMouseUp={() => mouseUpHandler()}>
+    <div className="group" onMouseUp={() => handleSelectionMouseUp()}>
       <div
         ref={contentRef}
         className="prose prose-sm prose-neutral max-w-none text-foreground"
@@ -123,7 +139,7 @@ const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
           <MarkdownContent
             content={content}
             highlights={highlights}
-            onActivateBranch={openBranch}
+            onActivateBranch={openHighlightBranch}
           />
         )}
       </div>

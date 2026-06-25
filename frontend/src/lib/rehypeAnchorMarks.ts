@@ -50,15 +50,16 @@ export interface AnchorMarksOptions {
 
 /** Class list helpers (hast className may be string | array | undefined). */
 function classList(props: Properties | undefined): string[] {
-  const cn = props?.className;
-  if (Array.isArray(cn)) return cn.map(String);
-  if (typeof cn === 'string') return cn.split(/\s+/).filter(Boolean);
+  const className = props?.className;
+  if (Array.isArray(className)) return className.map(String);
+  if (typeof className === 'string')
+    return className.split(/\s+/).filter(Boolean);
   return [];
 }
 
 function isKatexWrapper(node: Element): boolean {
-  const cls = classList(node.properties);
-  return cls.includes('katex') || cls.includes('katex-display');
+  const classes = classList(node.properties);
+  return classes.includes('katex') || classes.includes('katex-display');
 }
 
 /** Build the data-anchor-* properties for a leaf span. */
@@ -73,16 +74,16 @@ function anchorProps(leaf: Leaf): Properties {
 /** Properties applied to a marked segment (declarative <mark>). */
 function markProps(
   leaf: Leaf,
-  segLocalStart: number,
-  segLocalEnd: number,
+  segmentLocalStart: number,
+  segmentLocalEnd: number,
   depth: number,
   target: ProjectedHighlight | undefined,
 ): Properties {
   return {
     ...anchorProps(leaf),
     // Segment-local span lets capture resolve sub-leaf offsets precisely.
-    'data-anchor-seg-start': leaf.start + segLocalStart,
-    'data-anchor-seg-end': leaf.start + segLocalEnd,
+    'data-anchor-seg-start': leaf.start + segmentLocalStart,
+    'data-anchor-seg-end': leaf.start + segmentLocalEnd,
     'data-branch-mark': 'true',
     'data-branch-id': target?.id,
     style: `background-color:${markBackground(depth)};color:inherit;border-radius:2px;cursor:pointer;padding:0 1px;`,
@@ -100,8 +101,8 @@ function markProps(
  */
 function plainSpan(
   leaf: Leaf,
-  segLocalStart: number,
-  segLocalEnd: number,
+  segmentLocalStart: number,
+  segmentLocalEnd: number,
   text: string,
 ): Element {
   return {
@@ -109,8 +110,8 @@ function plainSpan(
     tagName: 'span',
     properties: {
       ...anchorProps(leaf),
-      'data-anchor-seg-start': leaf.start + segLocalStart,
-      'data-anchor-seg-end': leaf.start + segLocalEnd,
+      'data-anchor-seg-start': leaf.start + segmentLocalStart,
+      'data-anchor-seg-end': leaf.start + segmentLocalEnd,
     },
     children: [{ type: 'text', value: text }],
   };
@@ -128,28 +129,36 @@ function segmentTextNode(
   leafConsumed: number,
   projection: LeafProjection,
 ): RootContent[] {
-  const out: RootContent[] = [];
+  const output: RootContent[] = [];
   const nodeStart = leafConsumed; // local offset where this text node begins
   const nodeEnd = leafConsumed + text.length;
 
-  for (const seg of projection.segments) {
+  for (const segment of projection.segments) {
     // Intersect this projection segment with the current text node window.
-    const lo = Math.max(seg.localStart, nodeStart);
-    const hi = Math.min(seg.localEnd, nodeEnd);
-    if (hi <= lo) continue;
-    const piece = leaf.value.slice(lo, hi);
-    if (seg.depth === 0) {
-      out.push(plainSpan(leaf, lo, hi, piece));
+    const intersectionStart = Math.max(segment.localStart, nodeStart);
+    const intersectionEnd = Math.min(segment.localEnd, nodeEnd);
+    if (intersectionEnd <= intersectionStart) continue;
+    const textPiece = leaf.value.slice(intersectionStart, intersectionEnd);
+    if (segment.depth === 0) {
+      output.push(
+        plainSpan(leaf, intersectionStart, intersectionEnd, textPiece),
+      );
     } else {
-      out.push({
+      output.push({
         type: 'element',
         tagName: 'mark',
-        properties: markProps(leaf, lo, hi, seg.depth, seg.covering[0]),
-        children: [{ type: 'text', value: piece }],
+        properties: markProps(
+          leaf,
+          intersectionStart,
+          intersectionEnd,
+          segment.depth,
+          segment.covering[0],
+        ),
+        children: [{ type: 'text', value: textPiece }],
       });
     }
   }
-  return out;
+  return output;
 }
 
 /**
@@ -164,43 +173,46 @@ export function rehypeAnchorMarks(options: AnchorMarksOptions) {
     // Monotonic cursor into canonicalText. We also track which leaf the cursor
     // currently sits in for fast projection lookup.
     let cursor = 0;
-    let leafIdx = 0;
+    let leafIndex = 0;
 
-    const leafAt = (pos: number): number => {
-      // Advance leafIdx so leaves[leafIdx] contains pos (or is the next leaf).
+    const leafAt = (position: number): number => {
+      // Advance leafIndex so leaves[leafIndex] contains position (or is the next leaf).
       while (
-        leafIdx < model.leaves.length &&
-        pos >= model.leaves[leafIdx].end &&
-        model.leaves[leafIdx].end > model.leaves[leafIdx].start
+        leafIndex < model.leaves.length &&
+        position >= model.leaves[leafIndex].end &&
+        model.leaves[leafIndex].end > model.leaves[leafIndex].start
       ) {
-        leafIdx++;
+        leafIndex++;
       }
-      return leafIdx;
+      return leafIndex;
     };
 
     // Consume a KaTeX wrapper: bind it to the next math leaf at/after cursor.
     const consumeMath = (node: Element): void => {
       // Find next math leaf at or after the cursor.
-      let idx = leafAt(cursor);
-      while (idx < model.leaves.length && model.leaves[idx].kind !== 'math') {
-        idx++;
+      let mathLeafIndex = leafAt(cursor);
+      while (
+        mathLeafIndex < model.leaves.length &&
+        model.leaves[mathLeafIndex].kind !== 'math'
+      ) {
+        mathLeafIndex++;
       }
-      if (idx >= model.leaves.length) return; // no math leaf left; leave as-is
-      const leaf = model.leaves[idx];
-      const projection = projections[idx];
+      if (mathLeafIndex >= model.leaves.length) return; // no math leaf left; leave as-is
+      const leaf = model.leaves[mathLeafIndex];
+      const projection = projections[mathLeafIndex];
       const props: Properties = {
         ...(node.properties ?? {}),
         ...anchorProps(leaf),
       };
       if (projection.marked) {
-        const seg = projection.segments[0];
-        const target = seg.covering[0];
+        const segment = projection.segments[0];
+        const target = segment.covering[0];
         const existingStyle =
           typeof node.properties?.style === 'string'
             ? node.properties.style.replace(/;?\s*$/, ';')
             : '';
         props.style =
-          `${existingStyle}background-color:${markBackground(seg.depth)};border-radius:2px;cursor:pointer;`;
+          `${existingStyle}background-color:${markBackground(segment.depth)};border-radius:2px;cursor:pointer;`;
         props['data-branch-mark'] = 'true';
         if (target) {
           props['data-branch-id'] = target.id;
@@ -213,7 +225,7 @@ export function rehypeAnchorMarks(options: AnchorMarksOptions) {
       node.properties = props;
       // Advance cursor past the single math unit.
       cursor = leaf.end;
-      leafIdx = idx;
+      leafIndex = mathLeafIndex;
     };
 
     /**
@@ -274,24 +286,26 @@ export function rehypeAnchorMarks(options: AnchorMarksOptions) {
         return [node];
       }
 
-      const out: RootContent[] = [];
-      const idx = leafAt(cursor);
-      const leaf = model.leaves[idx];
-      const projection = projections[idx];
+      const output: RootContent[] = [];
+      const currentLeafIndex = leafAt(cursor);
+      const leaf = model.leaves[currentLeafIndex];
+      const projection = projections[currentLeafIndex];
 
       // The matched run must lie within ONE leaf (prose 1:1; code split by
       // Shiki never crosses the leaf). Clip the match to the leaf end for safety.
       const inLeaf = Math.min(match, leaf.end - cursor);
       const leafConsumed = cursor - leaf.start;
       const matchedText = value.slice(0, inLeaf);
-      out.push(...segmentTextNode(matchedText, leaf, leafConsumed, projection));
+      output.push(
+        ...segmentTextNode(matchedText, leaf, leafConsumed, projection),
+      );
       cursor += inLeaf;
 
       // Any trailing chars beyond the leaf or non-matching are filler.
       if (inLeaf < value.length) {
-        out.push({ type: 'text', value: value.slice(inLeaf) });
+        output.push({ type: 'text', value: value.slice(inLeaf) });
       }
-      return out;
+      return output;
     };
 
     tree.children = processChildren(tree.children) as Root['children'];
