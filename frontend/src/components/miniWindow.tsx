@@ -14,10 +14,16 @@ const MiniWindow = () => {
   const convo = useConvo();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
 
+  // Keep the branch history pinned to the bottom by scrolling ONLY the panel's
+  // own history scroller. Do NOT use scrollIntoView here: the desktop panel is
+  // an absolute child of the main chat scroll container, and scrollIntoView
+  // bubbles to every scrollable ancestor — it would scroll the whole
+  // conversation and push the panel's header off the top of the viewport.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    const el = historyRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [mini?.miniChatHistory]);
 
   if (!mini || !convo) return null;
@@ -106,9 +112,8 @@ const MiniWindow = () => {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div ref={historyRef} className="flex-1 overflow-y-auto px-4 py-3">
         {miniChatHistory && <MiniMessageHistory history={miniChatHistory} />}
-        <div ref={bottomRef} />
       </div>
 
       <div className="px-3 pb-3 pt-2">

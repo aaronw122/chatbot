@@ -70,6 +70,7 @@ const Session = () => {
       mini.setHighlightRange(null);
       mini.setQuote(null);
       mini.setAnchorTop(null);
+      mini.setAnchorMaxHeight(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
