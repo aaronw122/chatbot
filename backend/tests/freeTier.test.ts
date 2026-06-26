@@ -406,6 +406,29 @@ describe("InMemoryStorage reassignUserData (anonymous → real)", () => {
     const oai = realKeys.find((k) => k.provider === "openai")!;
     expect(oai.maskedKey).toBe("sk-…MOVE");
   });
+
+  it("never carries is_active across the link: the moved anon key arrives inactive, leaving exactly one active row", async () => {
+    const s = new InMemoryStorage();
+    // Returning user has an ACTIVE anthropic key. Anon has an ACTIVE openai key
+    // (a different provider — so it gets moved, not dropped).
+    await s.upsertApiKey({ userId: "real-4", provider: "anthropic", encryptedKey: encrypt("sk-real-ant"), model: "m" });
+    await s.setActiveProvider({ userId: "real-4", provider: "anthropic" });
+    await s.upsertApiKey({ userId: "anon-4", provider: "openai", encryptedKey: encrypt("sk-anon-oai"), model: "m" });
+    await s.setActiveProvider({ userId: "anon-4", provider: "openai" });
+
+    await s.reassignUserData({ fromUserId: "anon-4", toUserId: "real-4" });
+
+    const realKeys = await s.listApiKeys({ userId: "real-4" });
+    // Exactly ONE active row — the returning user's anthropic key.
+    const active = realKeys.filter((k) => k.isActive);
+    expect(active).toHaveLength(1);
+    expect(active[0]!.provider).toBe("anthropic");
+    // The moved openai key arrived inactive.
+    expect(realKeys.find((k) => k.provider === "openai")!.isActive).toBe(false);
+    // getActiveKey resolves cleanly to the sole active key (no multiple-rows error).
+    const got = await s.getActiveKey({ userId: "real-4" });
+    expect(got?.provider).toBe("anthropic");
+  });
 });
 
 describe("anonymous session free tier + post-link exhaustion", () => {

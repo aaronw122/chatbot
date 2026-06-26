@@ -405,6 +405,9 @@ export class InMemoryStorage implements Storage {
         const targetKey = this.keyOf(toUserId, row.provider)
         if (!this.apiKeys.has(targetKey)) {
           row.userId = toUserId
+          // Never carry an active flag across the link (parity with SupabaseStorage):
+          // the returning user's own active key must remain the sole active one.
+          row.isActive = false
           this.apiKeys.set(targetKey, row)
         }
         // else: conflict — target already configured this provider; drop the anon row.
@@ -985,9 +988,15 @@ export class SupabaseStorage implements Storage {
             .eq('provider', row.provider)
           if (error) throw error
         } else {
+          // Force is_active:false on the moved row. Never carry an active flag
+          // across the link: the returning user's own active key must remain the
+          // SOLE active row, or getActiveKey()'s .maybeSingle() throws on two
+          // is_active=true rows — persistently breaking /api/usage and the send
+          // path (the catch+log here cannot undo the committed write). A brand-new
+          // signup has no keys, so this is a harmless no-op for them.
           const { error } = await supabaseAdmin
             .from('user_api_keys')
-            .update({ user_id: toUserId })
+            .update({ user_id: toUserId, is_active: false })
             .eq('user_id', fromUserId)
             .eq('provider', row.provider)
           if (error) throw error
