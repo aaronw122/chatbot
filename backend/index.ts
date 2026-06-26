@@ -47,6 +47,12 @@ function isProvider(value: unknown): value is Provider {
 // the 402 copy — never hardcode "5".
 const FREE_TIER_LIMIT = Number(process.env.FREE_TIER_LIMIT ?? '5')
 
+// Output cap applied ONLY on the owner-funded free path (passed as maxTokens to
+// generate/streamReply). Bounds per-query spend on the owner key — important for
+// providers like OpenAI whose BYOK path is otherwise uncapped. BYOK requests
+// never receive this (Anthropic keeps its built-in 1000 default, OpenAI uncapped).
+const FREE_TIER_MAX_TOKENS = 1000
+
 // Free-tier config. A blank FREE_TIER_KEY disables the tier (behavior reverts to
 // today's no_api_key gate on first send). When enabled, the forced model is
 // validated against the provider allow-list; an invalid model DISABLES the tier
@@ -59,8 +65,8 @@ function computeFreeTierConfig(): FreeTierConfig {
   const apiKey = process.env.FREE_TIER_KEY ?? ''
   if (!apiKey) return { enabled: false }
 
-  const provider = process.env.FREE_TIER_PROVIDER ?? 'anthropic'
-  const model = process.env.FREE_TIER_MODEL ?? 'claude-haiku-4-5-20251001'
+  const provider = process.env.FREE_TIER_PROVIDER ?? 'openai'
+  const model = process.env.FREE_TIER_MODEL ?? 'gpt-5.4-mini'
 
   if (!isProvider(provider)) {
     console.warn(`free tier disabled: invalid FREE_TIER_PROVIDER "${provider}"`)
@@ -241,6 +247,8 @@ const getAIResponse = async (convoId: string, userId: string) => {
       model: slot.model,
       apiKey: slot.apiKey,
       messages: providerMessages,
+      // Cap output only on the owner-funded free path.
+      maxTokens: slot.isFree ? FREE_TIER_MAX_TOKENS : undefined,
     })
   } catch (err) {
     // Non-streaming refund predicate: release ONLY if generateReply throws before
@@ -330,6 +338,8 @@ const streamAIResponse = async (convoId: string, userId: string, req: Request, r
         model: slot.model,
         apiKey: slot.apiKey,
         messages: providerMessages,
+        // Cap output only on the owner-funded free path.
+        maxTokens: slot.isFree ? FREE_TIER_MAX_TOKENS : undefined,
       },
       abort.signal
     )) {

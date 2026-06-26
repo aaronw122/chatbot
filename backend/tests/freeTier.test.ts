@@ -29,6 +29,9 @@ mock.module("../utils/auth", () => ({
 let deltas: string[] = ["Hello", " world"];
 let lastStreamModel: string | undefined;
 let lastGenerateModel: string | undefined;
+// Capture the per-call output cap to assert "cap the free path only".
+let lastStreamMaxTokens: number | undefined;
+let lastGenerateMaxTokens: number | undefined;
 
 mock.module("../llm/provider", () => ({
   MODELS: {
@@ -44,13 +47,15 @@ mock.module("../llm/provider", () => ({
       throw new Error("not allowed");
     }
   },
-  generateReply: async (args: { model: string }) => {
+  generateReply: async (args: { model: string; maxTokens?: number }) => {
     lastGenerateModel = args.model;
+    lastGenerateMaxTokens = args.maxTokens;
     return deltas.join("");
   },
   // eslint-disable-next-line require-yield
-  streamReply: async function* (args: { model: string }) {
+  streamReply: async function* (args: { model: string; maxTokens?: number }) {
     lastStreamModel = args.model;
+    lastStreamMaxTokens = args.maxTokens;
     for (const d of deltas) yield d;
   },
 }));
@@ -254,11 +259,13 @@ describe("free-tier streaming gate (POST /messages/:id)", () => {
     expect(await storage.getFreeUsage({ userId: USER })).toBe(FREE_LIMIT);
   });
 
-  it("free replies are forced to the Haiku model", async () => {
+  it("free replies are forced to the configured model and capped at 1000 output tokens", async () => {
     const convoId = await createConvo();
     const res = await streamSend(convoId);
     await readNdjson(res);
     expect(lastStreamModel).toBe(FREE_MODEL);
+    // Owner-funded free path carries the output cap.
+    expect(lastStreamMaxTokens).toBe(1000);
   });
 
   it("a BYOK user never touches the free counter", async () => {
@@ -271,9 +278,11 @@ describe("free-tier streaming gate (POST /messages/:id)", () => {
       await readNdjson(res);
     }
 
-    // Counter untouched, and the BYOK model (not Haiku) was used.
+    // Counter untouched, the BYOK model (not the free model) was used, and the
+    // BYOK path carries NO output cap (cap is free-path only).
     expect(await storage.getFreeUsage({ userId: USER })).toBe(0);
     expect(lastStreamModel).toBe("claude-opus-4-8");
+    expect(lastStreamMaxTokens).toBeUndefined();
   });
 });
 
