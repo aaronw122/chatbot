@@ -209,6 +209,14 @@ describe('buildAnchorModel — global invariants', () => {
     '# Title $x$\n\n- one `c`\n- two \\(y\\)',
     '\\(\\frac{a}{b}\\)',
     'multi\n\nparagraph $z$ text',
+    // Multi-line `\[...\]` / `\(...\)`: line endings inside the run. These once
+    // crashed the parser (micromark splice-buffer RangeError -> white screen)
+    // because the construct swallowed line endings instead of emitting them as
+    // their own tokens. See the streaming-prefix regression below.
+    '\\[\n\\text{Beta}(x;\\alpha,\\beta)\n\\]',
+    'on \\([0,1]\\):\n\n\\[\nf(x) = \\frac{x^{\\alpha-1}(1-x)^{\\beta-1}}{B(\\alpha,\\beta)}\n\\]\n\nwhere \\(B\\) is the Beta function.',
+    '\\(a\nb\\)',
+    '\\[ a \\\\ b \\\\ c \\]',
   ];
 
   for (const src of corpus) {
@@ -221,5 +229,20 @@ describe('buildAnchorModel — global invariants', () => {
   it('is deterministic (same input -> identical output)', () => {
     const src = 'Let $a$ be `code` and \\[b\\] done';
     expect(buildAnchorModel(src)).toEqual(buildAnchorModel(src));
+  });
+
+  // Regression: streaming an assistant message with multi-line display math used
+  // to throw `RangeError: Cannot access index N in a splice buffer of size N`
+  // (or hang) at a partial prefix, crashing the whole React tree to a white
+  // screen. Every prefix of the stream must parse and satisfy the invariants.
+  it('never throws across streaming prefixes of multi-line math', () => {
+    const streamed =
+      'The **Beta distribution** lives on \\([0,1]\\). Its density is:\n\n' +
+      '\\[\nf(x;\\alpha,\\beta) = \\frac{x^{\\alpha-1}(1-x)^{\\beta-1}}{B(\\alpha,\\beta)}\n\\]\n\n' +
+      'where \\(B(\\alpha,\\beta)\\) is the Beta function and \\(\\alpha,\\beta>0\\).';
+    for (let i = 1; i <= streamed.length; i++) {
+      const prefix = streamed.slice(0, i);
+      expect(() => assertInvariants(buildAnchorModel(prefix))).not.toThrow();
+    }
   });
 });

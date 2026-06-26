@@ -65,6 +65,19 @@ const RIGHT_PAREN: MathConstruct = 41; // ')'
 const LEFT_BRACKET: MathConstruct = 91; // '['
 const RIGHT_BRACKET: MathConstruct = 93; // ']'
 
+/**
+ * True for micromark line-ending codes. micromark preprocesses the source so
+ * line endings (LF, CR, CRLF) become negative codes (< -2) BEFORE a tokenizer
+ * sees them — a real `\n` never arrives as char code 10. A `text` construct must
+ * emit each line ending as its own `lineEnding` token (it cannot swallow one into
+ * a flat token), or the document's text-content subtokenizer corrupts its splice
+ * buffer and throws a RangeError. Mirrors `markdownLineEnding` from
+ * `micromark-util-character`; inlined to avoid taking a transitive dep directly.
+ */
+function isLineEnding(code: MathConstruct): boolean {
+  return code !== null && code < -2;
+}
+
 export type LeafKind = 'prose' | 'code' | 'math';
 
 export interface Leaf {
@@ -102,13 +115,20 @@ function tokenizeBackslashMath(
 
   return start;
 
-  // The whole `\(...\)` / `\[...\]` run is emitted as ONE flat `backslashMath`
-  // token (a leaf — no inner content tokens, so micromark never subtokenizes it).
-  // The mdast handler slices the serialized token and strips the delimiters to
-  // recover the TeX, so no inner tokens are needed.
+  // The `\(...\)` / `\[...\]` run is emitted as an outer `backslashMath` token
+  // wrapping inner `backslashMathMarker` (the two-char open/close delimiters),
+  // `backslashMathData` (content runs), and `lineEnding` (each newline) tokens.
+  // Mirroring micromark's own `codeText`, EVERY code lives inside an inner token
+  // — no untokenized gaps — and line endings are their own tokens. Both are
+  // mandatory: the document's text-content subtokenizer corrupts its splice
+  // buffer (a RangeError on multi-line input) when a `text` construct swallows a
+  // line ending or leaves gaps spanning one. The mdast handler below recovers the
+  // TeX by slicing the whole serialized token and stripping the 2-char
+  // delimiters, so the inner token types are only there to satisfy micromark.
   function start(code: MathConstruct): State | undefined {
     // `code` is the backslash that keyed this construct.
     effects.enter('backslashMath' as 'data');
+    effects.enter('backslashMathMarker' as 'data');
     effects.consume(code);
     return afterOpenBackslash;
   }
@@ -119,35 +139,58 @@ function tokenizeBackslashMath(
     } else if (code === LEFT_BRACKET) {
       closingDelimiter = RIGHT_BRACKET;
     } else {
+      // Not a math opener — `nok` discards this attempt's events entirely, so the
+      // unbalanced marker token we entered above is rolled back automatically.
       return nok(code);
     }
     effects.consume(code);
-    return inside;
+    effects.exit('backslashMathMarker' as 'data');
+    return between;
   }
 
-  function inside(code: MathConstruct): State | undefined {
+  // Between inner tokens: dispatch on line ending / possible closer / content.
+  function between(code: MathConstruct): State | undefined {
     if (code === null) {
       // EOF before a close delimiter: not math; fall back to escape handling.
       return nok(code);
     }
-    if (code === BACKSLASH) {
+    if (isLineEnding(code)) {
+      effects.enter('lineEnding');
       effects.consume(code);
-      return afterCloseBackslash;
+      effects.exit('lineEnding');
+      return between;
     }
-    effects.consume(code);
-    return inside;
+    if (code === BACKSLASH) {
+      // Could be the closing `\)` / `\]`; open a marker and look ahead one code.
+      effects.enter('backslashMathMarker' as 'data');
+      effects.consume(code);
+      return afterContentBackslash;
+    }
+    effects.enter('backslashMathData' as 'data');
+    return data(code);
   }
 
-  function afterCloseBackslash(code: MathConstruct): State | undefined {
+  function data(code: MathConstruct): State | undefined {
+    if (code === null || isLineEnding(code) || code === BACKSLASH) {
+      effects.exit('backslashMathData' as 'data');
+      return between(code);
+    }
+    effects.consume(code);
+    return data;
+  }
+
+  // A backslash was consumed inside an open marker token; decide closer vs content.
+  function afterContentBackslash(code: MathConstruct): State | undefined {
     if (code === closingDelimiter) {
       effects.consume(code);
+      effects.exit('backslashMathMarker' as 'data');
       effects.exit('backslashMath' as 'data');
       return ok;
     }
-    if (code === null) return nok(code);
-    // Not a closer — keep scanning (the consumed `\` is part of the run).
-    effects.consume(code);
-    return inside;
+    // Not a closer: that backslash was content (e.g. a LaTeX command or `\\`).
+    // Close its marker and re-dispatch the current code through `between`.
+    effects.exit('backslashMathMarker' as 'data');
+    return between(code);
   }
 }
 
