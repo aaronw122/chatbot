@@ -12,20 +12,32 @@ import { rangeToAnchorOffsets } from "@/lib/domCapture";
 // container), so the floating desktop branch panel can anchor to the highlighted
 // text and scroll away with it. Returns null when not inside a chat scroll
 // region (e.g. the mini-window's own re-rendered markdown).
+// Top offset of `rect` within the chat scroll content (the [data-chat-scroll]
+// container). The panel anchors its TOP here so it lines up with the highlighted
+// line. Returns null when not inside a chat scroll region.
 const chatScrollAnchorTop = (rect: DOMRect, fromEl: Element): number | null => {
   const scrollEl = fromEl.closest<HTMLElement>("[data-chat-scroll]");
   if (!scrollEl) return null;
-  const rawTop =
-    rect.top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop;
-  // Clamp so the panel opens fully inside the visible scroll area: a highlight
-  // low in the viewport would otherwise push the panel's bottom under the
-  // composer and clip it. (Once open it still scrolls away with the content.)
-  // PANEL_H mirrors miniWindow's h-[500px], shrunk to fit short viewports.
-  const MARGIN = 16;
-  const PANEL_H = Math.min(500, scrollEl.clientHeight - 2 * MARGIN);
-  const minTop = scrollEl.scrollTop + MARGIN;
-  const maxTop = scrollEl.scrollTop + scrollEl.clientHeight - PANEL_H - MARGIN;
-  return Math.min(Math.max(rawTop, minTop), Math.max(minTop, maxTop));
+  return rect.top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop;
+};
+
+const PANEL_HEIGHT = 500; // mirrors miniWindow's h-[500px]
+const PANEL_MARGIN = 16;
+
+// Notion-style open behavior: leave the conversation exactly where it is, but if
+// a panel anchored at `anchorTop` would spill past the bottom of the visible
+// scroll area (under the composer), nudge the page up by ONLY that overflow — a
+// small smooth bump — so the whole panel shows while staying on its highlight.
+const nudgePanelIntoView = (fromEl: Element, anchorTop: number | null) => {
+  if (anchorTop == null) return;
+  const scrollEl = fromEl.closest<HTMLElement>("[data-chat-scroll]");
+  if (!scrollEl) return;
+  const panelH = Math.min(PANEL_HEIGHT, scrollEl.clientHeight - 2 * PANEL_MARGIN);
+  const overflow =
+    anchorTop + panelH - (scrollEl.scrollTop + scrollEl.clientHeight - PANEL_MARGIN);
+  if (overflow > 0) {
+    scrollEl.scrollTo({ top: scrollEl.scrollTop + overflow, behavior: "smooth" });
+  }
 };
 
 const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
@@ -71,11 +83,11 @@ const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
     const markEl = document.querySelector<HTMLElement>(
       `[data-branch-id="${highlight.id}"]`,
     );
-    miniContext.setAnchorTop(
-      markEl
-        ? chatScrollAnchorTop(markEl.getBoundingClientRect(), markEl)
-        : null,
-    );
+    const anchorTop = markEl
+      ? chatScrollAnchorTop(markEl.getBoundingClientRect(), markEl)
+      : null;
+    miniContext.setAnchorTop(anchorTop);
+    if (markEl) nudgePanelIntoView(markEl, anchorTop);
     miniContext.setMiniOpen(true);
     miniContext.setMiniMessage(null);
     miniContext.setSourceMessageId(null);
@@ -164,6 +176,8 @@ const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
       miniContext.setMiniChatHistory(null);
       miniContext.setMiniConvoId(null);
       miniContext.setMiniMessage(null);
+      if (contentRef.current)
+        nudgePanelIntoView(contentRef.current, pending.anchorTop);
     }
     pendingBranchRef.current = null;
     window.getSelection()?.removeAllRanges();
