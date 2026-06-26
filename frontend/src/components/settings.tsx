@@ -18,6 +18,7 @@ import {
   type Provider,
   type UserKeyMeta,
   type ModelsResponse,
+  type UsageResponse,
 } from "../types/byok";
 
 // Per-provider editable form state (the API key is write-only; we never receive
@@ -35,6 +36,7 @@ const Settings = () => {
 
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [keys, setKeys] = useState<UserKeyMeta[]>([]);
+  const [usage, setUsage] = useState<UsageResponse | null>(null);
   const [drafts, setDrafts] = useState<DraftState>(emptyDrafts);
   const [busy, setBusy] = useState<Provider | "active" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,12 +52,14 @@ const Settings = () => {
   const refresh = async () => {
     setError(null);
     try {
-      const [fetchedModels, fetchedKeys] = await Promise.all([
+      const [fetchedModels, fetchedKeys, fetchedUsage] = await Promise.all([
         services.getModels(),
         services.getKeys(),
+        services.getUsage().catch(() => null),
       ]);
       setModels(fetchedModels);
       setKeys(fetchedKeys);
+      setUsage(fetchedUsage);
       // Seed each provider's model dropdown: existing configured model, else the
       // first allow-listed model for that provider.
       setDrafts((prev) => {
@@ -179,6 +183,17 @@ const Settings = () => {
             <span>{settings.noKeyPrompt}</span>
           </div>
         )}
+
+        {/* Used-count reinforcement — ONLY for the exhaustion (402) case. A 503
+            opens this dialog at freeUsed = 0, where this line would be misleading,
+            so gate it on a fully-consumed balance. */}
+        {usage?.freeTierEnabled &&
+          !usage.hasOwnKey &&
+          usage.freeRemaining <= 0 && (
+            <p className="text-xs text-muted-foreground">
+              You've used {usage.freeUsed} of {usage.freeLimit} free messages.
+            </p>
+          )}
 
         {error && (
           <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
