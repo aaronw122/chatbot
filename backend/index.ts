@@ -19,9 +19,86 @@ class NoKeyError extends Error {
   }
 }
 
+// Thrown (pre-flush) when a free-tier user has consumed their FREE_TIER_LIMIT
+// free replies → 402 free_tier_exhausted → frontend opens Settings to add a key.
+class FreeTierExhaustedError extends Error {
+  constructor() {
+    super('FREE_TIER_EXHAUSTED')
+    this.name = 'FreeTierExhaustedError'
+  }
+}
+
+// Thrown when the shared owner key fails on the free path (bad/rate-limited/quota)
+// BEFORE any output is delivered → 503 free_tier_unavailable. A post-flush failure
+// (mid-stream) cannot become a status code — it surfaces as an NDJSON {type:'error'}
+// frame instead (Policy A).
+class FreeTierUnavailableError extends Error {
+  constructor() {
+    super('FREE_TIER_UNAVAILABLE')
+    this.name = 'FreeTierUnavailableError'
+  }
+}
+
 function isProvider(value: unknown): value is Provider {
   return value === 'openai' || value === 'anthropic'
 }
+
+// Free-tier limit is the single source of truth for both the exhaustion gate and
+// the 402 copy — never hardcode "5".
+const FREE_TIER_LIMIT = Number(process.env.FREE_TIER_LIMIT ?? '5')
+
+// Free-tier config. A blank FREE_TIER_KEY disables the tier (behavior reverts to
+// today's no_api_key gate on first send). When enabled, the forced model is
+// validated against the provider allow-list; an invalid model DISABLES the tier
+// (logs a warning) rather than 500ing on every free send.
+type FreeTierConfig =
+  | { enabled: false }
+  | { enabled: true; provider: Provider; model: string; apiKey: string }
+
+function computeFreeTierConfig(): FreeTierConfig {
+  const apiKey = process.env.FREE_TIER_KEY ?? ''
+  if (!apiKey) return { enabled: false }
+
+  const provider = process.env.FREE_TIER_PROVIDER ?? 'anthropic'
+  const model = process.env.FREE_TIER_MODEL ?? 'claude-haiku-4-5-20251001'
+
+  if (!isProvider(provider)) {
+    console.warn(`free tier disabled: invalid FREE_TIER_PROVIDER "${provider}"`)
+    return { enabled: false }
+  }
+  try {
+    assertModelAllowed(provider, model)
+  } catch {
+    console.warn(`free tier disabled: FREE_TIER_MODEL "${model}" is not allow-listed for "${provider}"`)
+    return { enabled: false }
+  }
+  if (!Number.isFinite(FREE_TIER_LIMIT) || FREE_TIER_LIMIT <= 0) {
+    console.warn(`free tier disabled: invalid FREE_TIER_LIMIT "${process.env.FREE_TIER_LIMIT}"`)
+    return { enabled: false }
+  }
+  return { enabled: true, provider, model, apiKey }
+}
+
+// Memoized accessor keyed on FREE_TIER_KEY. In production the env is fixed before
+// startup, so this computes exactly ONCE (preserving the "read once at startup"
+// contract — no per-request env reads). The memo key only matters under the test
+// harness, where every suite shares one process + one cached index module: it lets
+// a suite that sets FREE_TIER_KEY enable the tier without leaking the enabled
+// state into sibling suites that expect it off (their no-key sends must 409).
+let cachedFreeTierKey: string | null = null
+let cachedFreeTierConfig: FreeTierConfig | null = null
+function freeTier(): FreeTierConfig {
+  const apiKey = process.env.FREE_TIER_KEY ?? ''
+  if (cachedFreeTierConfig !== null && cachedFreeTierKey === apiKey) {
+    return cachedFreeTierConfig
+  }
+  cachedFreeTierKey = apiKey
+  cachedFreeTierConfig = computeFreeTierConfig()
+  return cachedFreeTierConfig
+}
+
+// Validate + log at startup (disable rather than 500 per request on a bad model).
+freeTier()
 
 // NDJSON headers via setHeader (NOT writeHead) so the CORS headers set by the
 // cors() middleware survive. X-Accel-Buffering disables nginx buffering (inert
@@ -92,20 +169,90 @@ const assembleProviderMessages = async (
   return [preamble, ...baseMessages]
 }
 
-const getAIResponse = async (convoId: string, userId: string) => {
+// Resolve which key/model/provider a reply should use, implementing the 4-step
+// flow: BYOK active key (unlimited, their dime) → else owner-funded free tier
+// (FORCED to the cheap Haiku config, ignoring any UI selection) → else NoKeyError.
+type ResolvedKey = { provider: Provider; model: string; apiKey: string; isFree: boolean }
+
+const resolveKey = async (userId: string): Promise<ResolvedKey> => {
   const active = await storage.getActiveKey({ userId })
-  if (!active) {
-    throw new NoKeyError()
+  if (active) {
+    return { provider: active.provider, model: active.model, apiKey: active.apiKey, isFree: false }
   }
+  const config = freeTier()
+  if (config.enabled) {
+    // Free branch OVERRIDES provider/model with the forced cheap config.
+    return {
+      provider: config.provider,
+      model: config.model,
+      apiKey: config.apiKey,
+      isFree: true,
+    }
+  }
+  throw new NoKeyError()
+}
+
+// ONE shared reserve/gate/release helper used IDENTICALLY by both generation
+// entry points so the refund policy + count-cap cannot drift between the
+// streaming and non-streaming paths (M2). Returns the resolved key plus a
+// `release()` the caller invokes per its terminal-outcome refund predicate (§4).
+//
+// BYOK path: no-op release, the free counter is never touched.
+// Free path: reserve-before-call (THE algorithm) — increment FIRST; if the new
+// count exceeds the limit, refund immediately + throw FreeTierExhaustedError.
+type ReservedSlot = ResolvedKey & { release: () => Promise<void> }
+
+const reserveFreeSlot = async (userId: string): Promise<ReservedSlot> => {
+  const resolved = await resolveKey(userId)
+  if (!resolved.isFree) {
+    return { ...resolved, release: async () => {} }
+  }
+
+  // Reserve a slot atomically (returns the new count). Over the limit → refund
+  // the reservation and treat as exhausted (also caps write-amplification from
+  // exhausted users' repeated sends — the counter doesn't climb unboundedly).
+  const count = await storage.incrementFreeUsage({ userId })
+  if (count > FREE_TIER_LIMIT) {
+    await storage.releaseFreeUsage({ userId })
+    throw new FreeTierExhaustedError()
+  }
+
+  let released = false
+  const release = async () => {
+    if (released) return
+    released = true
+    await storage.releaseFreeUsage({ userId })
+  }
+  return { ...resolved, release }
+}
+
+const getAIResponse = async (convoId: string, userId: string) => {
+  // Reserve/gate runs BEFORE generateReply (and outside the try/catch below), so
+  // a FreeTierExhaustedError / storage error is never mis-mapped to a 503.
+  const slot = await reserveFreeSlot(userId)
 
   const updatedMessages = await storage.getMessages({ convoId })
   const providerMessages = await assembleProviderMessages(convoId, updatedMessages)
-  const text = await generateReply({
-    provider: active.provider,
-    model: active.model,
-    apiKey: active.apiKey,
-    messages: providerMessages,
-  })
+
+  let text: string
+  try {
+    text = await generateReply({
+      provider: slot.provider,
+      model: slot.model,
+      apiKey: slot.apiKey,
+      messages: providerMessages,
+    })
+  } catch (err) {
+    // Non-streaming refund predicate: release ONLY if generateReply throws before
+    // returning (output is atomic — never release after a returned reply).
+    if (slot.isFree) {
+      await slot.release()
+      // Owner-key failure on the free path → 503 (pre-output), not a raw 500.
+      throw new FreeTierUnavailableError()
+    }
+    // BYOK-key failures keep today's behavior.
+    throw err
+  }
   return await storage.addMessage({ convoId, role: 'assistant', content: text })
 }
 
@@ -117,11 +264,10 @@ const getAIResponse = async (convoId: string, userId: string) => {
 // single-fire finalize, regardless of whether the stream completes normally,
 // errors mid-flight, or the client disconnects.
 const streamAIResponse = async (convoId: string, userId: string, req: Request, res: Response) => {
-  const active = await storage.getActiveKey({ userId })
-  if (!active) {
-    // No bytes written yet — caller catches and returns 409.
-    throw new NoKeyError()
-  }
+  // M4 ordering invariant: reserveFreeSlot runs AFTER getActiveKey (wrapped by
+  // resolveKey) but STRICTLY BEFORE writeNdjsonHeaders — the only window where a
+  // NoKeyError→409 / FreeTierExhaustedError→402 can still be returned as JSON.
+  const slot = await reserveFreeSlot(userId)
 
   const updatedMessages = await storage.getMessages({ convoId })
   const providerMessages = await assembleProviderMessages(convoId, updatedMessages)
@@ -135,13 +281,24 @@ const streamAIResponse = async (convoId: string, userId: string, req: Request, r
   let persisted = false
   let streamCompleted = false
   let clientDisconnected = false
+  // Streaming refund predicate = "zero chunks delivered" (M1). Set the instant
+  // the first {type:'chunk'} is written; the free slot is consumed once this is
+  // true (or any text persists). Only a pre-first-chunk failure refunds.
+  let deliveredAnyChunk = false
 
   // Single-fire terminal: persists the assembled message exactly once and emits
   // exactly one terminal frame ({error} when errored, else {done}). Never both,
-  // never the error frame in addition to done.
+  // never the error frame in addition to done. Owns the free-slot release
+  // decision — the one place that knows both "did we deliver anything" and "how
+  // did we terminate."
   const finalize = async ({ errored }: { errored: boolean }) => {
     if (persisted) return
     persisted = true
+    // Refund ONLY on a pre-first-chunk failure. Complete / error-after-chunk /
+    // disconnect-after-chunk all CONSUME the slot (a real reply was delivered).
+    if (slot.isFree && !deliveredAnyChunk) {
+      await slot.release().catch((err) => console.error('failed to release free slot', err))
+    }
     try {
       await storage.addMessage({ convoId, role: 'assistant', content: buffer })
     } catch (err) {
@@ -169,15 +326,16 @@ const streamAIResponse = async (convoId: string, userId: string, req: Request, r
   try {
     for await (const delta of streamReply(
       {
-        provider: active.provider,
-        model: active.model,
-        apiKey: active.apiKey,
+        provider: slot.provider,
+        model: slot.model,
+        apiKey: slot.apiKey,
         messages: providerMessages,
       },
       abort.signal
     )) {
       if (!delta) continue
       buffer += delta
+      deliveredAnyChunk = true
       res.write(JSON.stringify({ type: 'chunk', text: delta }) + '\n')
     }
     streamCompleted = true
@@ -311,6 +469,19 @@ app.post('/conversations', async (req: Request, res: Response) => {
   catch (error) {
     if (error instanceof NoKeyError) {
       return res.status(409).json({ error: "no_api_key", message: "Add an API key in Settings to start chatting." })
+    }
+    // Defensive coverage for the withReply path (currently no live frontend caller).
+    if (error instanceof FreeTierExhaustedError) {
+      return res.status(402).json({
+        error: "free_tier_exhausted",
+        message: `You've used your ${FREE_TIER_LIMIT} free messages. Add your own API key to keep chatting.`,
+      })
+    }
+    if (error instanceof FreeTierUnavailableError) {
+      return res.status(503).json({
+        error: "free_tier_unavailable",
+        message: "Free trial is temporarily unavailable — add your own API key to continue.",
+      })
     }
     console.error('failed to add conversation', error)
     res.status(500).json({error: "server error"})
@@ -466,6 +637,20 @@ app.post('/messages/:id', async (req: Request, res: Response) => {
         // Header not yet sent (key load happens before flushHeaders) — JSON 409.
         return res.status(409).json({ error: "no_api_key", message: "Add an API key in Settings to start chatting." })
       }
+      // The gate runs pre-flush (M4 ordering invariant), so these only fire while
+      // headers are still unsent → safe to return a JSON status.
+      if (error instanceof FreeTierExhaustedError) {
+        return res.status(402).json({
+          error: "free_tier_exhausted",
+          message: `You've used your ${FREE_TIER_LIMIT} free messages. Add your own API key to keep chatting.`,
+        })
+      }
+      if (error instanceof FreeTierUnavailableError) {
+        return res.status(503).json({
+          error: "free_tier_unavailable",
+          message: "Free trial is temporarily unavailable — add your own API key to continue.",
+        })
+      }
       console.error('failed to send message', error)
       // If headers were already flushed we cannot change status — end quietly;
       // streamAIResponse's finalize handles the terminal/persist on stream errors.
@@ -497,6 +682,48 @@ app.get('/api/keys', async (req: Request, res: Response) => {
   }
   catch (error) {
     console.error('failed to list api keys', error)
+    res.status(500).json({ error: "server error" })
+  }
+})
+
+// GET /api/usage — free-tier balance for the session user. Session-gated like the
+// other /api routes (401 in the /api/keys form, NOT the /conversations 404 form).
+// hasOwnKey uses the SAME predicate as the §4 billing gate (getActiveKey() !== null),
+// not listApiKeys().length, so the frontend and the routing logic never disagree.
+app.get('/api/usage', async (req: Request, res: Response) => {
+  try {
+    const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) })
+    if (!session) {
+      return res.status(401).json({ error: "unauthorized" })
+    }
+
+    const userId = session.user.id
+    const active = await storage.getActiveKey({ userId })
+    const hasOwnKey = active !== null
+
+    if (!freeTier().enabled) {
+      // Free tier off: frontend hides the indicator / free-tier messaging.
+      return res.json({
+        freeUsed: 0,
+        freeLimit: FREE_TIER_LIMIT,
+        freeRemaining: 0,
+        hasOwnKey,
+        freeTierEnabled: false,
+      })
+    }
+
+    const freeUsed = await storage.getFreeUsage({ userId })
+    const freeRemaining = Math.max(FREE_TIER_LIMIT - freeUsed, 0)
+    res.json({
+      freeUsed,
+      freeLimit: FREE_TIER_LIMIT,
+      freeRemaining,
+      hasOwnKey,
+      freeTierEnabled: true,
+    })
+  }
+  catch (error) {
+    console.error('failed to get usage', error)
     res.status(500).json({ error: "server error" })
   }
 })

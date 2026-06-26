@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Provider, UserKeyMeta, ModelsResponse } from '../types/byok'
+import type { Provider, UserKeyMeta, ModelsResponse, UsageResponse } from '../types/byok'
 import type { Highlight, HighlightRequest } from '../../../types/types'
 
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim()
@@ -37,6 +37,56 @@ export const triggerNoApiKey = (message?: string) => {
   return noKeyError
 }
 
+// --- Free-tier gate (402 exhausted / 503 unavailable) ---
+// The owner-funded free tier surfaces two gate statuses, both pre-flush JSON:
+//   - 402 free_tier_exhausted  → "You've used your N free messages."
+//   - 503 free_tier_unavailable → "Free trial is temporarily unavailable."
+// Both funnel through ONE trigger into the SAME Settings dialog (server provides
+// the copy). This is a SEPARATE handler slot from onNoApiKey so the two gates
+// stay independently registrable.
+export class FreeTierError extends Error {
+  constructor(message = 'Add an API key in Settings to keep chatting.') {
+    super(message)
+    this.name = 'FreeTierError'
+  }
+}
+
+type FreeTierHandler = (error: FreeTierError) => void
+let freeTierHandler: FreeTierHandler | null = null
+
+// The Settings dialog registers a handler so a 402/503 opens Settings instead of
+// every caller showing a generic error.
+export const onFreeTierGate = (handler: FreeTierHandler | null) => {
+  freeTierHandler = handler
+}
+
+// Shared free-tier trigger. BOTH the streaming path (streamMessage, primary) and
+// the axios interceptor (defensive fallback for the non-streaming withReply path)
+// funnel through this so the Settings dialog opens identically. A bare throw would
+// NOT open Settings — only invoking the registered handler does.
+export const triggerFreeTierGate = (message?: string) => {
+  const freeTierError = new FreeTierError(message)
+  if (freeTierHandler) freeTierHandler(freeTierError)
+  return freeTierError
+}
+
+// --- Free-balance indicator refresh (§9) ---
+// Reserve-before-call means freeUsed already includes the in-flight reservation
+// while a stream is running, so the "N free messages left" indicator must refresh
+// on the NDJSON `done` frame — NOT on send dispatch (which would briefly
+// double-subtract). streamMessage fires this when it dispatches the done frame;
+// the indicator (chatHeader) registers a listener that re-fetches getUsage().
+type UsageChangedHandler = () => void
+let usageChangedHandler: UsageChangedHandler | null = null
+
+export const onUsageChanged = (handler: UsageChangedHandler | null) => {
+  usageChangedHandler = handler
+}
+
+const triggerUsageChanged = () => {
+  if (usageChangedHandler) usageChangedHandler()
+}
+
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -45,6 +95,16 @@ axios.interceptors.response.use(
     if (status === 409 && data?.error === 'no_api_key') {
       const noKeyError = triggerNoApiKey(data?.message)
       return Promise.reject(noKeyError)
+    }
+    // Secondary/fallback: the streaming path (streamMessage) bypasses axios, so
+    // this only fires for the non-streaming withReply create path (no live caller
+    // today). Both gate statuses route through the same free-tier trigger.
+    if (
+      (status === 402 && data?.error === 'free_tier_exhausted') ||
+      (status === 503 && data?.error === 'free_tier_unavailable')
+    ) {
+      const freeTierError = triggerFreeTierGate(data?.message)
+      return Promise.reject(freeTierError)
     }
     return Promise.reject(error)
   },
@@ -134,6 +194,18 @@ const streamMessage = async (
       triggerNoApiKey(errBody?.message)
       return
     }
+    // PRIMARY free-tier gate. The pre-flush reserve/gate returns a JSON status,
+    // so res.ok is false and the body is plain JSON — handle it HERE (not the
+    // axios interceptor, which never sees the streaming response). Do NOT bare
+    // throw: a throw becomes a generic "interrupted" bubble and never opens
+    // Settings. Pass the server copy through unchanged.
+    if (
+      (res.status === 402 && errBody?.error === 'free_tier_exhausted') ||
+      (res.status === 503 && errBody?.error === 'free_tier_unavailable')
+    ) {
+      triggerFreeTierGate(errBody?.message)
+      return
+    }
     throw new Error(errBody?.error ?? `stream failed: ${res.status}`)
   }
 
@@ -160,6 +232,10 @@ const streamMessage = async (
       onError()
     } else if (frame.type === 'done') {
       onDone()
+      // Refresh the free-balance indicator now that the in-flight reservation has
+      // settled (reserve-before-call already counted it; refreshing earlier would
+      // double-subtract).
+      triggerUsageChanged()
     }
   }
 
@@ -198,6 +274,13 @@ const getKeys = async (): Promise<UserKeyMeta[]> => {
   return response.data
 }
 
+// GET /api/usage — owner-funded free-tier balance for the session user. Backs the
+// free-balance indicator (§9) and the exhaustion popup copy (§8). 401 if no session.
+const getUsage = async (): Promise<UsageResponse> => {
+  const response = await axios.get(`${baseURL}/api/usage`)
+  return response.data
+}
+
 const addKey = async (keyReq: { provider: Provider, model: string, apiKey: string }): Promise<UserKeyMeta> => {
   const response = await axios.post(`${baseURL}/api/keys`, keyReq)
   return response.data
@@ -229,6 +312,7 @@ export default {
   promoteConversation,
   getModels,
   getKeys,
+  getUsage,
   addKey,
   setActiveProvider,
   deleteKey,
