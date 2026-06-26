@@ -105,15 +105,25 @@ surface components.**
 
 ### Binding ownership rules (critical for B agents)
 
-- **Centered-column max-width + horizontal padding owner:** the shell's inner
-  `<div class="mx-auto w-full max-w-3xl px-4">` in `main.tsx`. Column width is
-  **`max-w-3xl`** (48rem / 768px), horizontal padding **`px-4`**.
-- **Scroll-container owner:** the shell's `<div class="flex-1 overflow-y-auto">` in
-  `main.tsx` (the element directly inside `<main>`).
-- **B2/B4/B5 render content-only.** They MUST NOT add their own `mx-auto`, `max-w-*`, or
-  outer page scroll wrappers — centering and scrolling live in the shell only. (B2 must
-  remove the old `mx-auto max-w-3xl px-4` wrapper from `chat.tsx`; B5 must not re-add
-  `lg:mx-50`/`mx-auto` to `App.tsx`.)
+- **Centered-column max-width + horizontal padding owner (non-chat pages):** the shell's
+  `centeredColumn(...)` helper in `main.tsx` wraps the landing (`/`) and signup pages in
+  `<div class="mx-auto w-full max-w-3xl px-4">`. Column width is **`max-w-3xl`**
+  (48rem / 768px), horizontal padding **`px-4`**.
+- **Scroll-container owner (non-chat pages):** the `centeredColumn(...)` helper's
+  `<div class="flex-1 overflow-y-auto">`.
+- **Landing/signup render content-only.** They MUST NOT add their own `mx-auto`,
+  `max-w-*`, or outer page scroll wrappers — centering and scrolling for these pages live
+  in `centeredColumn(...)` only. (B5 must not re-add `lg:mx-50`/`mx-auto` to `App.tsx`.)
+- **Chat route is the exception — it owns the full main pane.** `chat.tsx` is NOT wrapped
+  by `centeredColumn(...)`; it renders header / message-scroll / composer as full-pane
+  flex children so that (a) the message scroll spans the full pane and its scrollbar sits
+  at the pane's right edge instead of overlapping the right-aligned user bubble, and
+  (b) a desktop right gutter (`GUTTER = "lg:pr-[18rem] xl:pr-[26rem]"`, applied to each
+  section — ramped so small laptops keep a readable column, full clearance at xl+) reserves
+  room for the floating Branch panel (`miniWindow`, `w-96` + `right-6`), which left-biases
+  the reading column Notion-style. Each section centers its own
+  `<div class="mx-auto w-full max-w-3xl px-4">` inside that gutter so header, messages, and
+  composer stay aligned. Keep these three in sync if you touch the chat layout.
 - **Sidebar width:** `16rem` (256px), defined by shadcn `SIDEBAR_WIDTH` in
   `components/ui/sidebar.tsx`. Collapsed (icon) width `3rem`. Do not change these
   constants; style within the sidebar's existing structure.

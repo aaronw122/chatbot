@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router";
 import { createRoot } from "react-dom/client";
 import "./index.css";
@@ -31,6 +31,15 @@ import SignUp from "./pages/signUp.tsx";
 //   - Mobile: the sidebar renders as an off-canvas drawer (shadcn Sheet). We
 //     keep it mounted on every authenticated screen so the hamburger can open
 //     it (conversation list + New chat + account), matching ChatGPT's mobile web.
+// Centered single-column wrapper for non-chat pages. Owns the scroll container +
+// centered max-width column that the chat route deliberately opts out of.
+// (Plain helper, not a component, to keep this entry file fast-refresh clean.)
+const centeredColumn = (children: ReactNode) => (
+  <div className="flex-1 overflow-y-auto">
+    <div className="mx-auto w-full max-w-3xl px-4 h-full">{children}</div>
+  </div>
+);
+
 function AppShell() {
   const location = useLocation();
   const { data: session } = authClient.useSession();
@@ -61,14 +70,16 @@ function AppShell() {
             </span>
           </header>
         )}
-        <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-3xl px-4 h-full">
-            <Routes>
-              <Route path="/" element={<App />} />
-              <Route path="/chat/:id" element={<Session />} />
-              <Route path="/signup" element={<SignUp />} />
-            </Routes>
-          </div>
+        <div className="flex-1 min-h-0 flex flex-col">
+          <Routes>
+            {/* Centered single-column pages (landing, signup). The chat route is
+                intentionally NOT wrapped here: it owns the full main pane so it
+                can left-bias its column and reserve a right gutter for the
+                floating Branch panel (see chat.tsx). */}
+            <Route path="/" element={centeredColumn(<App />)} />
+            <Route path="/chat/:id" element={<Session />} />
+            <Route path="/signup" element={centeredColumn(<SignUp />)} />
+          </Routes>
         </div>
       </main>
     </div>

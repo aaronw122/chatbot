@@ -12,6 +12,14 @@ import type { Highlight } from "../../../types/types";
 
 type ChatLocationState = { streamFirst?: string } | null;
 
+// Right gutter reserved on desktop for the floating Branch panel (miniWindow:
+// w-96 + right-6 ≈ 26rem). Ramped by breakpoint: a gentler reserve at lg keeps
+// the reading column usable on small laptops (a flat 26rem there shrinks it to
+// ~320px), widening to the full panel clearance at xl+ where there's room.
+// Applied to every full-pane section so the column shifts left-of-center
+// (Notion-style) and the sections stay horizontally aligned.
+const GUTTER = "lg:pr-[18rem] xl:pr-[26rem]";
+
 const Session = () => {
   const convo = useConvo();
   const message = useMessage();
@@ -110,30 +118,49 @@ const Session = () => {
   };
 
   return (
-    <div className="flex h-full flex-col">
-      <ChatHeader />
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Desktop right gutter (lg+) reserves space for the floating Branch panel
+          so it never covers the conversation, which also shifts the reading
+          column left-of-center (Notion-style). Header, message scroll, and
+          composer each share GUTTER so they stay vertically aligned, and each
+          centers a max-w-3xl column inside the remaining left region. The scroll
+          container spans the full pane, so its scrollbar sits out at the pane's
+          right edge instead of overlapping the right-aligned user bubble. */}
+      <div className={GUTTER}>
+        <div className="mx-auto w-full max-w-3xl">
+          <ChatHeader />
+        </div>
+      </div>
       {chatHistory ? (
         <>
-          <div className="flex-1 overflow-y-auto py-6">
-            <MessageHistory
-              history={chatHistory}
-              highlightsByMessage={highlightsByMessage}
-            />
-            <div ref={bottomRef} />
+          <div className={`flex-1 overflow-y-auto ${GUTTER}`}>
+            <div className="mx-auto w-full max-w-3xl px-4 py-6">
+              <MessageHistory
+                history={chatHistory}
+                highlightsByMessage={highlightsByMessage}
+              />
+              <div ref={bottomRef} />
+            </div>
           </div>
-          <div className="pb-4 pt-2">
-            <Input
-              sendMessage={handleSend}
-              newMessage={newMessage}
-              handleMsgChange={handleMsgChange}
-              id={id!}
-              disabled={streaming}
-            />
+          <div className={GUTTER}>
+            <div className="mx-auto w-full max-w-3xl px-4 pb-4 pt-2">
+              <Input
+                sendMessage={handleSend}
+                newMessage={newMessage}
+                handleMsgChange={handleMsgChange}
+                id={id!}
+                disabled={streaming}
+              />
+            </div>
           </div>
           <MiniWindow />
         </>
       ) : (
-        <p className="text-muted-foreground py-6 text-sm">loading</p>
+        <div className={GUTTER}>
+          <div className="mx-auto w-full max-w-3xl px-4">
+            <p className="text-muted-foreground py-6 text-sm">loading</p>
+          </div>
+        </div>
       )}
     </div>
   );
