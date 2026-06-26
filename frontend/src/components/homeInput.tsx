@@ -61,6 +61,7 @@ const HomeInput = () => {
       ) : (
         <Composer
           placeholder="ask away"
+          autoFocus
           value={newMessage}
           onChange={(value) =>
             handleMsgChange({

@@ -145,6 +145,9 @@ const MiniWindow = () => {
           side="right"
           showCloseButton={false}
           aria-describedby={undefined}
+          // Let MiniInput claim focus on open instead of Radix's default (the
+          // back-arrow button), so the user can type immediately.
+          onOpenAutoFocus={(e) => e.preventDefault()}
           className="flex w-full flex-col gap-0 p-0 sm:max-w-none"
         >
           <div className="flex items-center gap-2 border-b border-border px-2 py-2.5">

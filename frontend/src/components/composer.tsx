@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -8,6 +8,8 @@ type ComposerProps = {
   onChange: (value: string) => void;
   onSubmit: () => void;
   disabled?: boolean;
+  // Focus the textarea on mount so the user can type immediately (home page).
+  autoFocus?: boolean;
 };
 
 /**
@@ -24,8 +26,15 @@ const Composer = ({
   onChange,
   onSubmit,
   disabled = false,
+  autoFocus = false,
 }: ComposerProps) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Focus on mount when requested, so the user can start typing without first
+  // clicking the field.
+  useEffect(() => {
+    if (autoFocus) textareaRef.current?.focus();
+  }, [autoFocus]);
 
   // Auto-grow: reset height then size to content. Runs on every value change
   // (covers typing, paste, and programmatic resets to empty).

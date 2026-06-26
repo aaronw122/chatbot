@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Send } from "lucide-react";
 import services from "../services/index";
 import type { CreateBranchResponse } from "../services/index";
@@ -7,6 +8,14 @@ import { useMessage } from "@/context/messageContext";
 const MiniInput = () => {
   const mini = useMini();
   const message = useMessage();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // The branch window mounts this input when a branch opens; focus it so the
+  // user can type straight away instead of clicking first.
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
   if (!mini) return null;
   if (!message) throw new Error("useMessage not working");
 
@@ -98,6 +107,7 @@ const MiniInput = () => {
   return (
     <div className="flex items-end gap-2 rounded-2xl border border-input bg-background p-2 shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring">
       <textarea
+        ref={textareaRef}
         placeholder="ask a follow-up"
         rows={1}
         disabled={streaming}
