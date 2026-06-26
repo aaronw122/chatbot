@@ -155,11 +155,14 @@ The shell does **not** pin a composer. Composer *placement* is decided per page:
 ## 4. Messages & bubbles (B2)
 
 - **User message:** green bubble, right-aligned. `bg-card text-card-foreground`,
-  `rounded-2xl`, `px-4 py-2.5`, `max-w-[80%]`, aligned with `self-end` / `ml-auto`.
+  `rounded-2xl`, `px-4 py-2.5`, `text-base`, `max-w-[80%]`, aligned with `self-end` /
+  `ml-auto`.
 - **Assistant message:** plain markdown, left-aligned, no bubble. `text-foreground`,
   full comfortable line length (the `max-w-3xl` column already constrains it). Render via
-  the existing `@tailwindcss/typography` `prose` classes (`prose prose-sm`/`prose-neutral
-  max-w-none`); `max-w-none` because the column already sets the width.
+  the existing `@tailwindcss/typography` `prose` classes (`prose prose-neutral
+  max-w-none`); `max-w-none` because the column already sets the width. **Body text is
+  base `prose` (16px) — matches the user bubble's `text-base`; do NOT use `prose-sm` (14px),
+  which made the assistant read smaller than the user's message.**
 - **Vertical rhythm between messages:** `gap-6` (or `space-y-6`) on the message list.
 - **Assistant hover action (copy):** lucide `Copy`, `size-4`, `text-muted-foreground`,
   appears on `group-hover`; hover fill `hover:bg-accent rounded-md p-1`.
