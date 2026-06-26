@@ -1,54 +1,133 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import MessageHistory from "../components/messageHistory";
 import Input from "../components/input";
 import MiniWindow from "../components/miniWindow";
 import ChatHeader from "@/components/chatHeader";
-import { useParams } from "react-router";
+import { useParams, useLocation } from "react-router";
 import { useConvo } from "@/context/convoContext";
-
-import services from "../services/index";
 import { useMessage } from "@/context/messageContext";
+import { useMini } from "@/context/miniContext";
+import services from "../services/index";
+import type { Highlight } from "../../../types/types";
+
+type ChatLocationState = { streamFirst?: string } | null;
 
 const Session = () => {
   const convo = useConvo();
   const message = useMessage();
+  const mini = useMini();
+  const location = useLocation();
 
   if (!convo) throw new Error("useConvo not working");
   if (!message) throw new Error("useMessage not working");
-  //pull id from react router link when clicked
+  if (!mini) throw new Error("useMini not working");
 
   const { id } = useParams();
-
   const { setChatHistory, chatHistory } = convo;
+  const {
+    handleMsgChange,
+    newMessage,
+    setNewMessage,
+    setOptimisticMsg,
+    streaming,
+    streamReply,
+  } = message;
 
-  const { handleMsgChange, sendMessage, newMessage, setOptimisticMsg } =
-    message;
+  const handoffIdRef = useRef<string | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const [highlightsByMessage, setHighlightsByMessage] = useState<
+    Record<string, Highlight[]>
+  >({});
 
-  //on initial render, we getMessageHistory
   useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [chatHistory]);
+
+  useEffect(() => {
+    if (!id) return;
+    let active = true;
+    setHighlightsByMessage({});
+
+    services
+      .getHighlights(id)
+      .then((highlights) => {
+        if (!active) return;
+        const grouped: Record<string, Highlight[]> = {};
+        for (const highlight of highlights) {
+          (grouped[highlight.messageId] ??= []).push(highlight);
+        }
+        setHighlightsByMessage(grouped);
+      })
+      .catch(() => {
+        if (active) setHighlightsByMessage({});
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [id, mini.highlightRevision]);
+
+  useEffect(() => {
+    if (!id) return;
+    const state = location.state as ChatLocationState;
+    const streamFirst = state?.streamFirst;
+
+    if (streamFirst) {
+      if (handoffIdRef.current === id) return;
+      handoffIdRef.current = id;
+      setOptimisticMsg(null);
+      setChatHistory([
+        {
+          id: crypto.randomUUID(),
+          convoId: id,
+          role: "user",
+          content: streamFirst,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+      void streamReply(id, { firstReply: true, setChatHistory });
+      return;
+    }
+
+    let active = true;
     setOptimisticMsg(null);
-    services.getMessages(id!).then((r) => setChatHistory(r));
-  }, []);
+    setChatHistory(null);
+    services.getMessages(id).then((messages) => {
+      if (active) setChatHistory(messages);
+    });
 
-  //then, on subsequent chat messages, we update
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
-  // Centering + scroll container live in the shell (main.tsx) per DESIGN.md.
-  // This page renders content-only: a column-height flex with a header, a
-  // message list, and the bottom-pinned composer.
+  const handleSend = (convoId: string) => {
+    const content = newMessage.trim();
+    if (!content || streaming) return;
+    setNewMessage("");
+    void streamReply(convoId, { content, setChatHistory, seedUser: true });
+  };
+
   return (
     <div className="flex h-full flex-col">
       <ChatHeader />
       {chatHistory ? (
         <>
           <div className="flex-1 overflow-y-auto py-6">
-            <MessageHistory history={chatHistory} />
+            <MessageHistory
+              history={chatHistory}
+              highlightsByMessage={highlightsByMessage}
+            />
+            <div ref={bottomRef} />
           </div>
           <div className="pb-4 pt-2">
             <Input
-              sendMessage={sendMessage}
+              sendMessage={handleSend}
               newMessage={newMessage}
               handleMsgChange={handleMsgChange}
               id={id!}
+              disabled={streaming}
             />
           </div>
           <MiniWindow />

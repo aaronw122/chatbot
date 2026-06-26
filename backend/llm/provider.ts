@@ -68,16 +68,23 @@ function extractText(content: unknown): string {
   return ''
 }
 
-// Generate an assistant reply using the active provider + key. Normalizes our
-// message shape into each SDK's format and returns the assistant text.
-export async function generateReply({
+// Shared head for both reply paths: validate the (provider, model) pair and
+// normalize stored messages into { role, content } pairs. Factored out so
+// generateReply (non-streaming) and streamReply (streaming) stay in lockstep.
+function prepareReply({
   provider,
   model,
-  apiKey,
   messages,
-}: GenerateReplyArgs): Promise<string> {
+}: GenerateReplyArgs): Array<{ role: ChatRole; content: string }> {
   assertModelAllowed(provider, model)
-  const normalized = normalizeMessages(messages)
+  return normalizeMessages(messages)
+}
+
+// Generate an assistant reply using the active provider + key. Normalizes our
+// message shape into each SDK's format and returns the assistant text.
+export async function generateReply(args: GenerateReplyArgs): Promise<string> {
+  const { provider, model, apiKey } = args
+  const normalized = prepareReply(args)
 
   if (provider === 'anthropic') {
     const client = new Anthropic({ apiKey })
@@ -99,6 +106,59 @@ export async function generateReply({
       messages: normalized.map(({ role, content }) => ({ role, content })),
     })
     return completion.choices[0]?.message?.content ?? ''
+  }
+
+  // Exhaustiveness guard — unreachable given the Provider union.
+  throw new Error(`unsupported provider "${provider as string}"`)
+}
+
+// Stream an assistant reply token-by-token. Yields each non-empty text delta as
+// it arrives from the provider SDK. Shares the validate+normalize head with
+// generateReply via prepareReply. The optional AbortSignal is forwarded to the
+// SDK call so an upstream disconnect aborts the provider stream (saves tokens).
+export async function* streamReply(
+  args: GenerateReplyArgs,
+  signal?: AbortSignal
+): AsyncGenerator<string> {
+  const { provider, model, apiKey } = args
+  const normalized = prepareReply(args)
+  const sdkMessages = normalized.map(({ role, content }) => ({ role, content }))
+
+  if (provider === 'anthropic') {
+    const client = new Anthropic({ apiKey })
+    const stream = client.messages.stream(
+      {
+        max_tokens: 1000,
+        model,
+        messages: sdkMessages,
+      },
+      { signal }
+    )
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        const text = event.delta.text
+        if (text) yield text
+      }
+    }
+    return
+  }
+
+  if (provider === 'openai') {
+    const client = new OpenAI({ apiKey })
+    // No max_tokens (GPT-5.x param-minimal compat, matching generateReply).
+    const stream = await client.chat.completions.create(
+      {
+        model,
+        messages: sdkMessages,
+        stream: true,
+      },
+      { signal }
+    )
+    for await (const chunk of stream) {
+      const text = chunk.choices[0]?.delta?.content
+      if (text) yield text
+    }
+    return
   }
 
   // Exhaustiveness guard — unreachable given the Provider union.

@@ -15,6 +15,17 @@ export const MiniProvider = ({ children }: { children: React.ReactNode }) => {
   const [miniOpen, setMiniOpen] = useState<true | false>(false);
   const [selectedText, setSelectedText] = useState<string | null>(null);
   const [miniConvoId, setMiniConvoId] = useState<string | null>(null);
+  // pending highlight anchor (set by the reply button, consumed on first send)
+  const [sourceMessageId, setSourceMessageId] = useState<string | null>(null);
+  const [highlightRange, setHighlightRange] = useState<{
+    start: number;
+    end: number;
+  } | null>(null);
+  const [quote, setQuote] = useState<string | null>(null);
+  const [highlightRevision, setHighlightRevision] = useState(0);
+  const notifyHighlightCreated = () => {
+    setHighlightRevision((revision) => revision + 1);
+  };
 
   return (
     <MiniContext.Provider
@@ -29,6 +40,14 @@ export const MiniProvider = ({ children }: { children: React.ReactNode }) => {
         setSelectedText,
         miniConvoId,
         setMiniConvoId,
+        sourceMessageId,
+        setSourceMessageId,
+        highlightRange,
+        setHighlightRange,
+        quote,
+        setQuote,
+        highlightRevision,
+        notifyHighlightCreated,
       }}
     >
       {children}

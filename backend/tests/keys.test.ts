@@ -361,22 +361,30 @@ describe("DELETE /api/keys/:provider (Med7 auto-promote)", () => {
   });
 });
 
-describe("chat without a key → 409 no_api_key", () => {
-  it("POST /conversations returns 409 when no active key", async () => {
+describe("POST /conversations is de-LLM'd (Phase 2)", () => {
+  // Phase 2 split create from first reply: /conversations no longer calls the
+  // LLM. It creates the convo + persists the user's first message and returns
+  // the message array. The streamed first reply now comes from POST /messages/:id.
+  it("creates a convo without a key (no LLM call → no 409 gate here)", async () => {
     const res = await api.post("/conversations").send({ content: "hello world" });
-    expect(res.status).toBe(409);
-    expect(res.body.error).toBe("no_api_key");
+    expect(res.status).toBe(200);
+    const msgs = res.body as Array<{ role: string; content: string }>;
+    // Only the user's first message — no assistant reply generated here.
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]!.role).toBe("user");
+    expect(msgs[0]!.content).toBe("hello world");
   });
 
-  it("POST /conversations succeeds once a key is configured", async () => {
+  it("persists the user's first message and makes NO LLM call", async () => {
     await api
       .post("/api/keys")
       .send({ provider: "openai", model: "gpt-4o", apiKey: "sk-chat-dddd" });
 
     const res = await api.post("/conversations").send({ content: "hello again" });
     expect(res.status).toBe(200);
-    // getAIResponse appended the mocked assistant reply.
     const texts = (res.body as Array<{ role: string; content: string }>).map((m) => m.content);
-    expect(texts).toContain("mock assistant reply");
+    // No assistant reply: the mocked generateReply must NOT have been invoked.
+    expect(texts).not.toContain("mock assistant reply");
+    expect(texts).toEqual(["hello again"]);
   });
 });
