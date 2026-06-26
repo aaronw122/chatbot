@@ -7,7 +7,7 @@ import expressWs, { type Application } from 'express-ws';
 import cors from 'cors';
 import path from 'path';
 import type { WebSocket } from 'ws';
-import { InMemoryStorage, SupabaseStorage, type Storage } from './db/storage';
+import { storage } from './db/storage';
 import { MODELS, assertModelAllowed, generateReply, streamReply } from './llm/provider';
 import { encrypt } from './utils/crypto';
 
@@ -136,8 +136,8 @@ app.use(cors({
   credentials: true
 }))
 
-const storage: Storage = process.env.USE_SUPABASE === 'true' ? new SupabaseStorage()
-  : new InMemoryStorage()
+// `storage` is the shared singleton from ./db/storage (imported above). It lives
+// there, not here, so utils/auth can import it without a circular dependency.
 
 app.all("/api/auth/{*any}", toNodeHandler(auth))
 
@@ -710,6 +710,9 @@ app.get('/api/usage', async (req: Request, res: Response) => {
     const userId = session.user.id
     const active = await storage.getActiveKey({ userId })
     const hasOwnKey = active !== null
+    // Anonymous-first gate (§3): the frontend reads this FRESH at gate-fire time to
+    // branch signup-wall vs BYOK popup — never a mount-captured useSession() value.
+    const isAnonymous = (session.user as { isAnonymous?: boolean }).isAnonymous ?? false
 
     if (!freeTier().enabled) {
       // Free tier off: frontend hides the indicator / free-tier messaging.
@@ -719,6 +722,7 @@ app.get('/api/usage', async (req: Request, res: Response) => {
         freeRemaining: 0,
         hasOwnKey,
         freeTierEnabled: false,
+        isAnonymous,
       })
     }
 
@@ -730,6 +734,7 @@ app.get('/api/usage', async (req: Request, res: Response) => {
       freeRemaining,
       hasOwnKey,
       freeTierEnabled: true,
+      isAnonymous,
     })
   }
   catch (error) {

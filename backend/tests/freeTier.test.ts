@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, mock } from "bun
 import { randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { InMemoryStorage } from "../db/storage";
+import { encrypt } from "../utils/crypto";
 
 // --- Test environment setup (must happen before importing index) ---
 
@@ -17,7 +18,7 @@ delete process.env.USE_SUPABASE;
 const FREE_MODEL = "claude-haiku-4-5-20251001";
 const FREE_LIMIT = 5;
 
-let currentSession: { user: { id: string } } | null = null;
+let currentSession: { user: { id: string; isAnonymous?: boolean } } | null = null;
 
 mock.module("../utils/auth", () => ({
   auth: { api: { getSession: async () => currentSession } },
@@ -97,6 +98,9 @@ const USER = "user-free";
 
 function authed(id = USER) {
   currentSession = { user: { id } };
+}
+function authedAnon(id = USER) {
+  currentSession = { user: { id, isAnonymous: true } };
 }
 function unauth() {
   currentSession = null;
@@ -211,6 +215,7 @@ describe("GET /api/usage", () => {
       freeRemaining: FREE_LIMIT,
       hasOwnKey: false,
       freeTierEnabled: true,
+      isAnonymous: false,
     });
   });
 
@@ -321,5 +326,138 @@ describe("M5 — both entry points share ONE counter", () => {
 
     // Both over-limit reservations refunded → counter still at the limit.
     expect(await storage.getFreeUsage({ userId: USER })).toBe(FREE_LIMIT);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Anonymous-first free tier (account-linking migration + isAnonymous surfacing)
+// ---------------------------------------------------------------------------
+
+describe("InMemoryStorage reassignUserData (anonymous → real)", () => {
+  it("carries the free-usage count FIRST as greatest(), removes the anon row, and re-points conversations/highlights", async () => {
+    const s = new InMemoryStorage();
+    const ANON = "anon-1";
+    const REAL = "real-1";
+
+    // Anon consumed 3 free replies; the (pre-existing) real account consumed 1.
+    await s.incrementFreeUsage({ userId: ANON });
+    await s.incrementFreeUsage({ userId: ANON });
+    await s.incrementFreeUsage({ userId: ANON });
+    await s.incrementFreeUsage({ userId: REAL });
+
+    // Anon owns a saved conversation with a highlight on its message.
+    const convo = await s.createConversation({ content: "anon convo", userId: ANON, save: true });
+    const msg = await s.addMessage({ convoId: convo.id, role: "assistant", content: "answer" });
+    const highlight = await s.createHighlight({
+      messageId: msg.id,
+      branchConvoId: convo.id,
+      startOffset: 0,
+      endOffset: 3,
+      quote: "ans",
+      userId: ANON,
+    });
+
+    await s.reassignUserData({ fromUserId: ANON, toUserId: REAL });
+
+    // Count carried as greatest(real=1, anon=3) = 3; anon row removed.
+    expect(await s.getFreeUsage({ userId: REAL })).toBe(3);
+    expect(await s.getFreeUsage({ userId: ANON })).toBe(0);
+
+    // Conversation + highlight now belong to the real user.
+    const realConvos = await s.getConversations({ userId: REAL });
+    expect(realConvos.map((c) => c.id)).toContain(convo.id);
+    const anonConvos = await s.getConversations({ userId: ANON });
+    expect(anonConvos).toHaveLength(0);
+    const movedHighlight = (await s.getHighlightsByConvo(convo.id)).find((h) => h.id === highlight.id);
+    expect(movedHighlight?.userId).toBe(REAL);
+  });
+
+  it("never resets the target to 0-used: greatest() keeps the larger existing count", async () => {
+    const s = new InMemoryStorage();
+    // Real account already exhausted; anon consumed fewer.
+    for (let i = 0; i < FREE_LIMIT; i++) await s.incrementFreeUsage({ userId: "real-2" });
+    await s.incrementFreeUsage({ userId: "anon-2" });
+
+    await s.reassignUserData({ fromUserId: "anon-2", toUserId: "real-2" });
+
+    // Stays at the limit — the smaller anon count must not lower it.
+    expect(await s.getFreeUsage({ userId: "real-2" })).toBe(FREE_LIMIT);
+  });
+
+  it("re-points API keys but keeps the returning user's key on a provider conflict", async () => {
+    const s = new InMemoryStorage();
+    // Both anon and real have an anthropic key; only anon has an openai key.
+    // Distinguishable last-4 suffixes so we can prove which key survived a conflict.
+    await s.upsertApiKey({ userId: "anon-3", provider: "anthropic", encryptedKey: encrypt("sk-anon-anthropic-DROP"), model: "m" });
+    await s.upsertApiKey({ userId: "anon-3", provider: "openai", encryptedKey: encrypt("sk-anon-openai-MOVE"), model: "m" });
+    await s.upsertApiKey({ userId: "real-3", provider: "anthropic", encryptedKey: encrypt("sk-real-anthropic-KEEP"), model: "m" });
+
+    await s.reassignUserData({ fromUserId: "anon-3", toUserId: "real-3" });
+
+    const realKeys = await s.listApiKeys({ userId: "real-3" });
+    const providers = realKeys.map((k) => k.provider).sort();
+    expect(providers).toEqual(["anthropic", "openai"]);
+    // Anon keys are gone (conflicting anthropic dropped, openai moved).
+    expect(await s.listApiKeys({ userId: "anon-3" })).toHaveLength(0);
+    // The returning user's anthropic key was kept (not overwritten by the anon one).
+    const ant = realKeys.find((k) => k.provider === "anthropic")!;
+    expect(ant.maskedKey).toBe("sk-…KEEP");
+    // The non-conflicting openai key was moved over from the anon user.
+    const oai = realKeys.find((k) => k.provider === "openai")!;
+    expect(oai.maskedKey).toBe("sk-…MOVE");
+  });
+});
+
+describe("anonymous session free tier + post-link exhaustion", () => {
+  const ANON_USER = "anon-session";
+  const REAL_USER = "real-session";
+
+  it("an anonymous session gets free replies to the limit then 402; after linking the real user is exhausted (NOT reset)", async () => {
+    // Act as an anonymous session and consume the full free allowance.
+    authedAnon(ANON_USER);
+    for (let i = 0; i < FREE_LIMIT; i++) {
+      const convoId = await createConvo(`anon ${i}`);
+      const res = await streamSend(convoId);
+      expect(res.status).toBe(200);
+      await readNdjson(res);
+    }
+    expect(await storage.getFreeUsage({ userId: ANON_USER })).toBe(FREE_LIMIT);
+
+    // (limit+1)th as the anon user → 402 free_tier_exhausted (same gate as real users).
+    const overConvo = await createConvo("anon over limit");
+    const overRes = await streamSend(overConvo);
+    expect(overRes.status).toBe(402);
+    expect(((await overRes.json()) as any).error).toBe("free_tier_exhausted");
+
+    // better-auth links the anon user into a freshly signed-up real account.
+    await storage.reassignUserData({ fromUserId: ANON_USER, toUserId: REAL_USER });
+
+    // The real user inherits the exhausted count — they CANNOT farm a fresh 5.
+    expect(await storage.getFreeUsage({ userId: REAL_USER })).toBe(FREE_LIMIT);
+    expect(await storage.getFreeUsage({ userId: ANON_USER })).toBe(0);
+
+    // A real (non-anon) session for that user is immediately gated.
+    authed(REAL_USER);
+    const realConvo = await createConvo("real after link");
+    const realRes = await streamSend(realConvo);
+    expect(realRes.status).toBe(402);
+    expect(((await realRes.json()) as any).error).toBe("free_tier_exhausted");
+  });
+});
+
+describe("GET /api/usage isAnonymous flag", () => {
+  it("returns isAnonymous:true for an anonymous session", async () => {
+    authedAnon();
+    const res = await fetch(baseUrl + "/api/usage");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.isAnonymous).toBe(true);
+  });
+
+  it("returns isAnonymous:false for a real (non-anonymous) session", async () => {
+    authed();
+    const res = await fetch(baseUrl + "/api/usage");
+    const body = (await res.json()) as any;
+    expect(body.isAnonymous).toBe(false);
   });
 });

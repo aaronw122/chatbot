@@ -1,5 +1,7 @@
 import { betterAuth } from "better-auth";
+import { anonymous } from "better-auth/plugins";
 import { Pool } from "pg";
+import { storage } from "../db/storage";
 
 const trustedOrigins = Array.from(
   new Set(
@@ -28,4 +30,19 @@ export const auth = betterAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     },
   },
+  plugins: [
+    // Anonymous-first free tier: lets the frontend mint a throwaway session via
+    // signIn.anonymous() so a brand-new visitor can use their free replies before
+    // signing up. When they later sign up / log in, better-auth fires this hook to
+    // link the accounts; we carry the anon user's app data (free-usage count first
+    // and fail-closed, then conversations/highlights/keys) onto the real user.
+    anonymous({
+      onLinkAccount: async ({ anonymousUser, newUser }) => {
+        await storage.reassignUserData({
+          fromUserId: anonymousUser.user.id,
+          toUserId: newUser.user.id,
+        });
+      },
+    }),
+  ],
 });
