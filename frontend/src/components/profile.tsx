@@ -14,7 +14,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronsUpDown, LogOut, Settings as SettingsIcon } from "lucide-react";
+import {
+  ChevronsUpDown,
+  LogIn,
+  LogOut,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import Settings from "./settings";
 import { useSettings } from "@/context/settingsContext";
 
@@ -23,7 +28,6 @@ export const Profile = () => {
   const settings = useSettings();
 
   const { data: session, isPending } = authClient.useSession();
-  let firstLetter = "";
 
   const navigate = useNavigate();
 
@@ -33,9 +37,14 @@ export const Profile = () => {
     );
   }
 
-  if (session) {
-    firstLetter = session.user.name.charAt(0).toUpperCase();
-  }
+  // Anonymous-first: a guest has a session but no name/email. Treat them as a
+  // distinct identity — a "Guest" avatar plus a "Sign up / Log in" action — and
+  // never read `session.user.name.charAt(0)` (it's null for anon, which throws).
+  const isAnonymous = session?.user?.isAnonymous ?? false;
+  const isRealUser = !!session && !isAnonymous;
+  const firstLetter = isRealUser
+    ? (session.user.name?.charAt(0).toUpperCase() ?? "")
+    : "";
 
   const logOut = async () => {
     await authClient.signOut();
@@ -55,16 +64,22 @@ export const Profile = () => {
                 <>
                   <Avatar className="size-8 rounded-full">
                     <AvatarFallback className="rounded-full bg-primary text-sm text-primary-foreground">
-                      {firstLetter}
+                      {isRealUser ? firstLetter : "G"}
                     </AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">
-                      {session.user.name}
+                      {isRealUser ? session.user.name : "Guest"}
                     </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {session.user.email}
-                    </span>
+                    {isRealUser ? (
+                      <span className="truncate text-xs text-muted-foreground">
+                        {session.user.email}
+                      </span>
+                    ) : (
+                      <span className="truncate text-xs text-muted-foreground">
+                        Sign up to save your chats
+                      </span>
+                    )}
                   </div>
                   <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
                 </>
@@ -83,10 +98,17 @@ export const Profile = () => {
               <SettingsIcon className="size-4" />
               Settings
             </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => logOut()}>
-              <LogOut className="size-4" />
-              Log out
-            </DropdownMenuItem>
+            {isRealUser ? (
+              <DropdownMenuItem variant="destructive" onClick={() => logOut()}>
+                <LogOut className="size-4" />
+                Log out
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => settings?.openSignupWall()}>
+                <LogIn className="size-4" />
+                Sign up / Log in
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
