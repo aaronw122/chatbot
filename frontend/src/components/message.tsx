@@ -124,14 +124,14 @@ const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
   };
 
   return role === "user" ? (
-    <div className="ml-auto max-w-[80%] rounded-2xl bg-card px-4 py-2.5 text-card-foreground whitespace-pre-wrap">
+    <div className="ml-auto max-w-[80%] rounded-2xl bg-card px-4 py-2.5 text-base text-card-foreground whitespace-pre-wrap">
       {content}
     </div>
   ) : (
     <div className="group" onMouseUp={() => handleSelectionMouseUp()}>
       <div
         ref={contentRef}
-        className="prose prose-sm prose-neutral max-w-none text-foreground"
+        className="prose prose-neutral max-w-none text-foreground"
       >
         {content.trim() === "" ? (
           <TypingDots />
