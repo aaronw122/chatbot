@@ -152,6 +152,11 @@ export type miniContext = {
   // the highlighted substring (model context + chip/tooltip), never anchoring
   quote: string | null,
   setQuote: React.Dispatch<React.SetStateAction<string | null>>,
+  // top offset (px) within the chat scroll content where the floating desktop
+  // branch panel anchors, captured from the highlight/selection at open time so
+  // the panel scrolls away with that text like a comment (null = unanchored)
+  anchorTop: number | null,
+  setAnchorTop: React.Dispatch<React.SetStateAction<number | null>>,
   highlightRevision: number,
   notifyHighlightCreated: () => void,
 }

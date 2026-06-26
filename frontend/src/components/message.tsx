@@ -8,6 +8,16 @@ import services from "../services/index";
 import MarkdownContent from "./MarkdownContent";
 import { rangeToAnchorOffsets } from "@/lib/domCapture";
 
+// Top offset of `rect` within the chat scroll content (the [data-chat-scroll]
+// container), so the floating desktop branch panel can anchor to the highlighted
+// text and scroll away with it. Returns null when not inside a chat scroll
+// region (e.g. the mini-window's own re-rendered markdown).
+const chatScrollAnchorTop = (rect: DOMRect, fromEl: Element): number | null => {
+  const scrollEl = fromEl.closest<HTMLElement>("[data-chat-scroll]");
+  if (!scrollEl) return null;
+  return rect.top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop;
+};
+
 const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
   const replyRef = useRef<HTMLButtonElement>(null);
   // assistant content container — the SAME node used for v2 selection capture
@@ -39,6 +49,15 @@ const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
   // Open the branch for a highlight's inline mark. Reopening loads the branch's
   // saved history, not a fresh anchor.
   const openHighlightBranch = async (highlight: Highlight) => {
+    // Anchor the floating panel beside the clicked mark so it tracks that text.
+    const markEl = document.querySelector<HTMLElement>(
+      `[data-branch-id="${highlight.id}"]`,
+    );
+    miniContext.setAnchorTop(
+      markEl
+        ? chatScrollAnchorTop(markEl.getBoundingClientRect(), markEl)
+        : null,
+    );
     miniContext.setMiniOpen(true);
     miniContext.setMiniMessage(null);
     miniContext.setSourceMessageId(null);
@@ -109,6 +128,13 @@ const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
       );
       if (highlightRange) {
         const quote = (selection.toString() || selectedText).trim();
+        // Anchor the floating panel to the just-selected text's position.
+        miniContext.setAnchorTop(
+          chatScrollAnchorTop(
+            selectionRange.getBoundingClientRect(),
+            contentContainer,
+          ),
+        );
         miniContext.setSourceMessageId(id);
         miniContext.setHighlightRange(highlightRange);
         miniContext.setQuote(quote);

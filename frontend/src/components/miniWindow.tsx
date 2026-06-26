@@ -37,6 +37,8 @@ const MiniWindow = () => {
     setHighlightRange,
     quote,
     setQuote,
+    anchorTop,
+    setAnchorTop,
   } = mini;
 
   const resetState = () => {
@@ -47,6 +49,7 @@ const MiniWindow = () => {
     setSourceMessageId(null);
     setHighlightRange(null);
     setQuote(null);
+    setAnchorTop(null);
   };
 
   const handleClose = () => {
@@ -168,9 +171,15 @@ const MiniWindow = () => {
 
   if (!miniOpen) return null;
 
-  // Desktop: floating window pinned bottom-right with maximize + close controls.
+  // Desktop: a floating panel anchored beside the highlighted text. It lives
+  // inside the chat scroll container (see chat.tsx), so it scrolls away with the
+  // conversation like a Notion comment instead of following the viewport. top is
+  // the captured offset of the highlight within that scroll content (fallback to
+  // a small inset if we never captured one).
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex h-[500px] w-96 flex-col rounded-2xl border border-border bg-background shadow-md">
+    <div
+      style={{ top: anchorTop ?? 24 }}
+      className="absolute right-6 z-30 flex h-[500px] w-96 flex-col rounded-2xl border border-border bg-background shadow-md">
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
         <span className="text-sm font-semibold text-primary">Branch</span>
         <div className="flex items-center gap-1">
