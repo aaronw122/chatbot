@@ -61,6 +61,16 @@ export interface Storage {
 
   // Internal — returns the decrypted active key for the request path, or null.
   getActiveKey({ userId }: { userId: string }): Promise<ActiveKey | null>
+
+  // ----- Free tier (owner-funded trial) usage counter -----
+  // A missing row means 0 — both impls return 0 for an unseen user.
+  getFreeUsage({ userId }: { userId: string }): Promise<number>
+
+  // Atomically reserve a slot; returns the new count (reserve-before-call, §4).
+  incrementFreeUsage({ userId }: { userId: string }): Promise<number>
+
+  // Release (decrement) a reservation made by incrementFreeUsage, clamped at 0.
+  releaseFreeUsage({ userId }: { userId: string }): Promise<void>
 }
 
 // Internal row shape held by InMemoryStorage for API keys.
@@ -105,6 +115,8 @@ export class InMemoryStorage implements Storage {
   private apiKeys: Map<string, ApiKeyRow> = new Map()
   // Branch-anchored highlights, keyed by highlight id.
   private highlights: Map<string, Highlight> = new Map()
+  // Free-tier usage counter, keyed by userId. Missing entry means 0.
+  private freeUsage: Map<string, number> = new Map()
 
   //conversation can only be created if one message has been sent
   // upon sending message, we create conversation AND add it to message class with that convo id
@@ -313,6 +325,24 @@ export class InMemoryStorage implements Storage {
     this.messages = newMessages
     this.apiKeys = new Map()
     this.highlights = new Map()
+    this.freeUsage = new Map()
+  }
+
+  // ----- Free tier usage counter -----
+
+  async getFreeUsage({ userId }: { userId: string }): Promise<number> {
+    return this.freeUsage.get(userId) ?? 0
+  }
+
+  async incrementFreeUsage({ userId }: { userId: string }): Promise<number> {
+    const next = (this.freeUsage.get(userId) ?? 0) + 1
+    this.freeUsage.set(userId, next)
+    return next
+  }
+
+  async releaseFreeUsage({ userId }: { userId: string }): Promise<void> {
+    const current = this.freeUsage.get(userId) ?? 0
+    this.freeUsage.set(userId, Math.max(current - 1, 0))
   }
 
   // ----- BYOK: API key CRUD -----
@@ -764,5 +794,34 @@ export class SupabaseStorage implements Storage {
       model: data.model,
       apiKey: decrypt(data.encrypted_key),
     }
+  }
+
+  // ----- Free tier usage counter -----
+
+  async getFreeUsage({ userId }: { userId: string }): Promise<number> {
+    const { data, error } = await supabaseAdmin
+      .from('free_query_usage')
+      .select('used')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (error) throw error
+    // Missing row → unseen user → 0.
+    return data?.used ?? 0
+  }
+
+  // Atomic upsert + self-referencing increment via the Postgres RPC (the raw
+  // `used = used + 1` cannot be issued through the PostgREST JS client). Returns
+  // the new count.
+  async incrementFreeUsage({ userId }: { userId: string }): Promise<number> {
+    const { data, error } = await supabaseAdmin.rpc('increment_free_usage', { p_user_id: userId })
+    if (error) throw error
+    return data as number
+  }
+
+  // Release a reservation via the matching decrement RPC (clamped at 0 server-side).
+  async releaseFreeUsage({ userId }: { userId: string }): Promise<void> {
+    const { error } = await supabaseAdmin.rpc('decrement_free_usage', { p_user_id: userId })
+    if (error) throw error
   }
 }
