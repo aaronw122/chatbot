@@ -1,7 +1,9 @@
-import { StrictMode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router";
 import { createRoot } from "react-dom/client";
 import "./index.css";
+import "katex/dist/katex.min.css";
+import { initHighlighter } from "./lib/highlighter.ts";
 import App from "./App.tsx";
 import Session from "./pages/chat.tsx";
 import ConvoList from "./components/convoList.tsx";
@@ -9,7 +11,11 @@ import { ConvoProvider } from "./context/convoContext.tsx";
 import { MessageProvider } from "./context/messageContext.tsx";
 import { MiniProvider } from "./context/miniContext.tsx";
 import { SettingsProvider } from "./context/settingsContext.tsx";
-import { SidebarProvider, useSidebar } from "./components/ui/sidebar.tsx";
+import {
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from "./components/ui/sidebar.tsx";
 import { MobileMenuButton } from "./components/mobileMenuButton.tsx";
 import { authClient } from "./lib/auth-client.ts";
 import SignUp from "./pages/signUp.tsx";
@@ -19,17 +25,27 @@ import SignUp from "./pages/signUp.tsx";
 // horizontal padding. Composer PLACEMENT is per-page (see frontend/DESIGN.md).
 //
 // Sidebar visibility:
-//   - Desktop: persistent sidebar on chat pages; hidden on the landing/main
-//     page ("/") and the login screen so those stay clean and full-width.
+//   - Desktop: persistent sidebar on every authenticated screen, including the
+//     landing/main page ("/"), matching ChatGPT which keeps its sidebar on the
+//     new-chat screen. Only the login screen (no session) stays full-width.
 //   - Mobile: the sidebar renders as an off-canvas drawer (shadcn Sheet). We
 //     keep it mounted on every authenticated screen so the hamburger can open
 //     it (conversation list + New chat + account), matching ChatGPT's mobile web.
+// Centered single-column wrapper for non-chat pages. Owns the scroll container +
+// centered max-width column that the chat route deliberately opts out of.
+// (Plain helper, not a component, to keep this entry file fast-refresh clean.)
+const centeredColumn = (children: ReactNode) => (
+  <div className="flex-1 overflow-y-auto">
+    <div className="mx-auto w-full max-w-3xl px-4 h-full">{children}</div>
+  </div>
+);
+
 function AppShell() {
   const location = useLocation();
   const { data: session } = authClient.useSession();
-  const { isMobile } = useSidebar();
+  const { state } = useSidebar();
   const isHome = location.pathname === "/";
-  const showSidebar = !!session && (isMobile || !isHome);
+  const showSidebar = !!session;
   // The home page has no ChatHeader, so on mobile it needs its own slim top bar
   // to expose the menu button. Chat pages get the hamburger inside ChatHeader.
   const showMobileHomeBar = !!session && isHome;
@@ -37,7 +53,15 @@ function AppShell() {
   return (
     <div className="flex h-svh w-full overflow-hidden">
       {showSidebar && <ConvoList />}
-      <main className="flex-1 flex flex-col h-svh min-w-0">
+      <main className="relative flex-1 flex flex-col h-svh min-w-0">
+        {isHome && showSidebar && state === "collapsed" && (
+          // Desktop-only expand trigger for home, shown ONLY when the sidebar is
+          // collapsed (the collapse control itself lives inside the sidebar
+          // header, matching ChatGPT). Absolutely positioned so it consumes no
+          // layout space and the centered landing column does not shift. The
+          // mobile home bar owns the hamburger on mobile.
+          <SidebarTrigger className="hidden md:flex absolute left-3 top-3 z-20" />
+        )}
         {showMobileHomeBar && (
           <header className="md:hidden flex h-14 items-center gap-2 border-b border-border bg-background px-3 shrink-0">
             <MobileMenuButton />
@@ -46,34 +70,47 @@ function AppShell() {
             </span>
           </header>
         )}
-        <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-3xl px-4 h-full">
-            <Routes>
-              <Route path="/" element={<App />} />
-              <Route path="/chat/:id" element={<Session />} />
-              <Route path="/signup" element={<SignUp />} />
-            </Routes>
-          </div>
+        <div className="flex-1 min-h-0 flex flex-col">
+          <Routes>
+            {/* Centered single-column pages (landing, signup). The chat route is
+                intentionally NOT wrapped here: it owns the full main pane so it
+                can left-bias its column and reserve a right gutter for the
+                floating Branch panel (see chat.tsx). */}
+            <Route path="/" element={centeredColumn(<App />)} />
+            <Route path="/chat/:id" element={<Session />} />
+            <Route path="/signup" element={centeredColumn(<SignUp />)} />
+          </Routes>
         </div>
       </main>
     </div>
   );
 }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <ConvoProvider>
-      <MessageProvider>
-        <MiniProvider>
-          <SettingsProvider>
-            <BrowserRouter>
-              <SidebarProvider>
-                <AppShell />
-              </SidebarProvider>
-            </BrowserRouter>
-          </SettingsProvider>
-        </MiniProvider>
-      </MessageProvider>
-    </ConvoProvider>
-  </StrictMode>,
-);
+// Preinitialize the Shiki highlighter ONCE before mounting so the Markdown
+// render + declarative highlight projection run synchronously (see
+// lib/highlighter.ts and the §3 "preinitialize once, render synchronously"
+// execution model). If init fails, mount anyway — MarkdownContent tolerates a
+// null highlighter by rendering plain code, never crashing.
+function mount() {
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <ConvoProvider>
+        <MessageProvider>
+          <MiniProvider>
+            <SettingsProvider>
+              <BrowserRouter>
+                <SidebarProvider>
+                  <AppShell />
+                </SidebarProvider>
+              </BrowserRouter>
+            </SettingsProvider>
+          </MiniProvider>
+        </MessageProvider>
+      </ConvoProvider>
+    </StrictMode>,
+  );
+}
+
+void initHighlighter()
+  .catch(() => undefined)
+  .finally(mount);

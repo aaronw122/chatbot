@@ -1,6 +1,6 @@
 import type { MessageProps } from "../../../types/types";
-import Markdown from "react-markdown";
 import TypingDots from "./typingDots";
+import MarkdownContent from "./MarkdownContent";
 
 const MiniMessage = ({ role, content }: MessageProps) => {
   return role === "user" ? (
@@ -9,7 +9,11 @@ const MiniMessage = ({ role, content }: MessageProps) => {
     </div>
   ) : (
     <div className="prose prose-sm prose-neutral max-w-none text-foreground">
-      {content.trim() === "" ? <TypingDots /> : <Markdown>{content}</Markdown>}
+      {content.trim() === "" ? (
+        <TypingDots />
+      ) : (
+        <MarkdownContent content={content} />
+      )}
     </div>
   );
 };

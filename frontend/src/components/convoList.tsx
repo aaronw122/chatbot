@@ -11,6 +11,7 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarMenu,
+  SidebarTrigger,
 } from "./ui/sidebar";
 
 import { useConvo } from "@/context/convoContext";
@@ -27,44 +28,63 @@ const ConvoList = () => {
 
   useEffect(() => {
     if (session) {
-      services.getConversations().then((r) => setConvos(r));
+      services
+        .getConversations()
+        .then((conversations) => setConvos(conversations));
     }
   }, [session, setConvos]);
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="offcanvas">
       <SidebarHeader className="gap-3 px-3 pt-3">
-        <div className="flex items-center gap-2 px-1">
-          <img src="/logo.png" alt="" className="size-6 w-auto shrink-0" />
-          <h1 className="text-[9px] font-bold tracking-tight text-primary group-data-[collapsible=icon]:hidden">
-            easybranch
-          </h1>
+        <div className="flex items-center justify-between gap-2 px-1">
+          <div className="flex items-center gap-2">
+            <img src="/logo.png" alt="" className="size-6 w-auto shrink-0" />
+            <h1 className="text-base font-bold tracking-tight text-primary">
+              easybranch
+            </h1>
+          </div>
+          <SidebarTrigger className="text-muted-foreground" />
         </div>
         <NewChat />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          {convos === null ? (
-            <p className="px-2 py-1.5 text-sm text-muted-foreground">
-              Loading…
-            </p>
-          ) : convos.length === 0 ? (
-            <p className="px-2 py-1.5 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
-              No conversations yet.
-            </p>
-          ) : (
-            <SidebarMenu>
-              {convos.map((el: Conversation) => (
-                <ConvoTitle key={el.id} title={el.title} id={el.id} />
-              ))}
-            </SidebarMenu>
-          )}
+          {renderConversationListContent(convos)}
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
         <Profile />
       </SidebarFooter>
     </Sidebar>
+  );
+};
+
+const renderConversationListContent = (conversations: Conversation[] | null) => {
+  if (conversations === null) {
+    return (
+      <p className="px-2 py-1.5 text-sm text-muted-foreground">Loading…</p>
+    );
+  }
+
+  if (conversations.length === 0) {
+    return (
+      <p className="px-2 py-1.5 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
+        No conversations yet.
+      </p>
+    );
+  }
+
+  return (
+    <SidebarMenu>
+      {conversations.map((conversation) => (
+        <ConvoTitle
+          key={conversation.id}
+          title={conversation.title}
+          id={conversation.id}
+        />
+      ))}
+    </SidebarMenu>
   );
 };
 

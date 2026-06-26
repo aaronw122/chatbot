@@ -31,10 +31,11 @@ export interface CreateConversation {
   save?: true | false;
 }
 
-// A persisted branch-anchored highlight. Offsets are indices into the source
-// message's rendered plain text (text-node concatenation, document order — see
-// frontend/src/lib/textOffsets.ts). `branchConvoId` is the conversation the
-// highlight opens.
+// A persisted branch-anchored highlight. Offsets are UTF-16 indices into the
+// source message's canonical-text stream — the single coordinate system
+// produced by buildAnchorModel (see frontend/src/lib/anchorModel.ts), stored in
+// the `start_offset`/`end_offset` columns. `branchConvoId` is the conversation
+// the highlight opens.
 export interface Highlight {
   id: string;
   messageId: string;
