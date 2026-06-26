@@ -39,6 +39,8 @@ const MiniWindow = () => {
     setQuote,
     anchorTop,
     setAnchorTop,
+    anchorMaxHeight,
+    setAnchorMaxHeight,
   } = mini;
 
   const resetState = () => {
@@ -50,6 +52,7 @@ const MiniWindow = () => {
     setHighlightRange(null);
     setQuote(null);
     setAnchorTop(null);
+    setAnchorMaxHeight(null);
   };
 
   const handleClose = () => {
@@ -178,7 +181,7 @@ const MiniWindow = () => {
   // a small inset if we never captured one).
   return (
     <div
-      style={{ top: anchorTop ?? 24 }}
+      style={{ top: anchorTop ?? 24, maxHeight: anchorMaxHeight ?? undefined }}
       className="absolute right-6 z-30 flex h-[500px] max-h-[calc(100svh-11rem)] w-96 flex-col rounded-2xl border border-border bg-background shadow-md">
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
         <span className="text-sm font-semibold text-primary">Branch</span>

@@ -157,6 +157,10 @@ export type miniContext = {
   // the panel scrolls away with that text like a comment (null = unanchored)
   anchorTop: number | null,
   setAnchorTop: React.Dispatch<React.SetStateAction<number | null>>,
+  // capped panel height (px) for the current viewport, so the panel always fits
+  // the visible scroll area (used for both rendering and scroll-into-view math)
+  anchorMaxHeight: number | null,
+  setAnchorMaxHeight: React.Dispatch<React.SetStateAction<number | null>>,
   highlightRevision: number,
   notifyHighlightCreated: () => void,
 }

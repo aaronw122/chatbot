@@ -24,20 +24,34 @@ const chatScrollAnchorTop = (rect: DOMRect, fromEl: Element): number | null => {
 const PANEL_HEIGHT = 500; // mirrors miniWindow's h-[500px]
 const PANEL_MARGIN = 16;
 
-// Notion-style open behavior: leave the conversation exactly where it is, but if
-// a panel anchored at `anchorTop` would spill past the bottom of the visible
-// scroll area (under the composer), nudge the page up by ONLY that overflow — a
-// small smooth bump — so the whole panel shows while staying on its highlight.
-const nudgePanelIntoView = (fromEl: Element, anchorTop: number | null) => {
-  if (anchorTop == null) return;
+// Cap the panel height to the visible scroll area, then scroll the MINIMUM
+// needed so a panel of that height anchored at `anchorTop` is fully visible:
+// scroll up if its top (header) is clipped, down if its bottom (input) is, and
+// nothing if it already fits. Returns the capped height so the panel renders at
+// exactly the size this math assumed (no top/bottom mismatch).
+const fitPanelIntoView = (
+  fromEl: Element,
+  anchorTop: number | null,
+): number | null => {
+  if (anchorTop == null) return null;
   const scrollEl = fromEl.closest<HTMLElement>("[data-chat-scroll]");
-  if (!scrollEl) return;
-  const panelH = Math.min(PANEL_HEIGHT, scrollEl.clientHeight - 2 * PANEL_MARGIN);
-  const overflow =
-    anchorTop + panelH - (scrollEl.scrollTop + scrollEl.clientHeight - PANEL_MARGIN);
-  if (overflow > 0) {
-    scrollEl.scrollTo({ top: scrollEl.scrollTop + overflow, behavior: "smooth" });
+  if (!scrollEl) return null;
+  const panelH = Math.max(
+    200,
+    Math.min(PANEL_HEIGHT, scrollEl.clientHeight - 2 * PANEL_MARGIN),
+  );
+  const viewTop = scrollEl.scrollTop + PANEL_MARGIN;
+  const viewBottom = scrollEl.scrollTop + scrollEl.clientHeight - PANEL_MARGIN;
+  let target = scrollEl.scrollTop;
+  if (anchorTop < viewTop) {
+    target = anchorTop - PANEL_MARGIN; // top clipped -> scroll up to reveal it
+  } else if (anchorTop + panelH > viewBottom) {
+    target = anchorTop + panelH - scrollEl.clientHeight + PANEL_MARGIN; // bottom clipped -> down
   }
+  if (target !== scrollEl.scrollTop) {
+    scrollEl.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+  }
+  return panelH;
 };
 
 const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
@@ -87,7 +101,9 @@ const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
       ? chatScrollAnchorTop(markEl.getBoundingClientRect(), markEl)
       : null;
     miniContext.setAnchorTop(anchorTop);
-    if (markEl) nudgePanelIntoView(markEl, anchorTop);
+    miniContext.setAnchorMaxHeight(
+      markEl ? fitPanelIntoView(markEl, anchorTop) : null,
+    );
     miniContext.setMiniOpen(true);
     miniContext.setMiniMessage(null);
     miniContext.setSourceMessageId(null);
@@ -177,7 +193,9 @@ const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
       miniContext.setMiniConvoId(null);
       miniContext.setMiniMessage(null);
       if (contentRef.current)
-        nudgePanelIntoView(contentRef.current, pending.anchorTop);
+        miniContext.setAnchorMaxHeight(
+          fitPanelIntoView(contentRef.current, pending.anchorTop),
+        );
     }
     pendingBranchRef.current = null;
     window.getSelection()?.removeAllRanges();
