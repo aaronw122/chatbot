@@ -51,6 +51,26 @@ const Session = () => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [chatHistory]);
 
+  // Branch (mini-window) state lives in a global context, so without cleanup it
+  // bleeds into the next conversation. Close + clear any open branch whenever we
+  // leave this chat: the cleanup runs on id change (switching chats) and on
+  // unmount (starting a new chat). Keyed on id only — the mini setters are
+  // stable, while depending on `mini` (a fresh object each render) would wipe
+  // the branch mid-session.
+  useEffect(() => {
+    return () => {
+      mini.setMiniOpen(false);
+      mini.setMiniChatHistory(null);
+      mini.setSelectedText(null);
+      mini.setMiniConvoId(null);
+      mini.setMiniMessage(null);
+      mini.setSourceMessageId(null);
+      mini.setHighlightRange(null);
+      mini.setQuote(null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
   useEffect(() => {
     if (!id) return;
     let active = true;
