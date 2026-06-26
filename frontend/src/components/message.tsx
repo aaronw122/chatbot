@@ -15,7 +15,17 @@ import { rangeToAnchorOffsets } from "@/lib/domCapture";
 const chatScrollAnchorTop = (rect: DOMRect, fromEl: Element): number | null => {
   const scrollEl = fromEl.closest<HTMLElement>("[data-chat-scroll]");
   if (!scrollEl) return null;
-  return rect.top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop;
+  const rawTop =
+    rect.top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop;
+  // Clamp so the panel opens fully inside the visible scroll area: a highlight
+  // low in the viewport would otherwise push the panel's bottom under the
+  // composer and clip it. (Once open it still scrolls away with the content.)
+  // PANEL_H mirrors miniWindow's h-[500px], shrunk to fit short viewports.
+  const MARGIN = 16;
+  const PANEL_H = Math.min(500, scrollEl.clientHeight - 2 * MARGIN);
+  const minTop = scrollEl.scrollTop + MARGIN;
+  const maxTop = scrollEl.scrollTop + scrollEl.clientHeight - PANEL_H - MARGIN;
+  return Math.min(Math.max(rawTop, minTop), Math.max(minTop, maxTop));
 };
 
 const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
@@ -24,6 +34,14 @@ const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
   // (read-only DOM->model mapping) and reply-button positioning. The renderer
   // owns all marks declaratively, so this ref is NEVER mutated post-commit.
   const contentRef = useRef<HTMLDivElement>(null);
+  // Branch anchor captured the moment a selection is made (mouseup/touchend).
+  // Mobile clears the live selection when the reply button is tapped, so the
+  // click handler consumes this snapshot instead of re-reading the selection.
+  const pendingBranchRef = useRef<{
+    highlightRange: { start: number; end: number };
+    quote: string;
+    anchorTop: number | null;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
   const miniContext = useMini();
 
@@ -73,23 +91,50 @@ const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
     }
   };
 
-  const handleSelectionMouseUp = async () => {
+  // On selection end (mouse OR touch): capture the branch anchor as canonical
+  // offsets immediately — while the selection is guaranteed present — and float
+  // the reply button above it. Capturing here (not on click) is what makes
+  // mobile work, since tapping the button clears the live selection.
+  const handleSelectionEnd = async () => {
     const replyButton = replyRef.current;
+    const contentContainer = contentRef.current;
     if (!replyButton) return;
 
     const selection = window.getSelection();
     const selectedText = selection?.toString().trim();
 
-    if (!selection || !selectedText || selectedText.length === 0) {
+    if (
+      !selection ||
+      !selectedText ||
+      selection.rangeCount === 0 ||
+      !contentContainer ||
+      !id
+    ) {
+      pendingBranchRef.current = null;
       hideReplyButton(replyButton);
       return;
     }
 
-    //get first node of selected text
     const selectionRange = selection.getRangeAt(0);
     const selectionRect = selectionRange.getClientRects()[0];
-    if (!selectionRect) return hideReplyButton(replyButton);
-    //library computes position of the selection
+    // Maps the DOM Range back into the model via leaf-span metadata (domCapture),
+    // applying atomic-math endpoint normalization.
+    const highlightRange = rangeToAnchorOffsets(contentContainer, selectionRange);
+    if (!selectionRect || !highlightRange) {
+      pendingBranchRef.current = null;
+      hideReplyButton(replyButton);
+      return;
+    }
+
+    pendingBranchRef.current = {
+      highlightRange,
+      quote: (selection.toString() || selectedText).trim(),
+      anchorTop: chatScrollAnchorTop(
+        selectionRange.getBoundingClientRect(),
+        contentContainer,
+      ),
+    };
+
     await computePosition(
       { getBoundingClientRect: () => selectionRect },
       replyButton,
@@ -106,45 +151,21 @@ const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
     showReplyButton(replyButton);
   };
 
-  // Capture the selection as canonical offsets when reply is clicked. Maps the
-  // DOM Range back into the model via leaf-span metadata (domCapture), applying
-  // atomic-math endpoint normalization.
+  // Open the branch from the snapshot captured at selection time.
   const handleReplyClick = () => {
-    const contentContainer = contentRef.current;
-    const selection = window.getSelection();
-    const selectedText = selection?.toString().trim();
-
-    if (
-      selectedText &&
-      contentContainer &&
-      selection &&
-      selection.rangeCount > 0 &&
-      id
-    ) {
-      const selectionRange = selection.getRangeAt(0);
-      const highlightRange = rangeToAnchorOffsets(
-        contentContainer,
-        selectionRange,
-      );
-      if (highlightRange) {
-        const quote = (selection.toString() || selectedText).trim();
-        // Anchor the floating panel to the just-selected text's position.
-        miniContext.setAnchorTop(
-          chatScrollAnchorTop(
-            selectionRange.getBoundingClientRect(),
-            contentContainer,
-          ),
-        );
-        miniContext.setSourceMessageId(id);
-        miniContext.setHighlightRange(highlightRange);
-        miniContext.setQuote(quote);
-        miniContext.setSelectedText(quote);
-        miniContext.setMiniOpen(true);
-        miniContext.setMiniChatHistory(null);
-        miniContext.setMiniConvoId(null);
-        miniContext.setMiniMessage(null);
-      }
+    const pending = pendingBranchRef.current;
+    if (pending && id) {
+      miniContext.setAnchorTop(pending.anchorTop);
+      miniContext.setSourceMessageId(id);
+      miniContext.setHighlightRange(pending.highlightRange);
+      miniContext.setQuote(pending.quote);
+      miniContext.setSelectedText(pending.quote);
+      miniContext.setMiniOpen(true);
+      miniContext.setMiniChatHistory(null);
+      miniContext.setMiniConvoId(null);
+      miniContext.setMiniMessage(null);
     }
+    pendingBranchRef.current = null;
     window.getSelection()?.removeAllRanges();
     hideReplyButton(replyRef.current!);
   };
@@ -154,7 +175,12 @@ const Message = ({ role, content, id, highlights = [] }: MessageProps) => {
       {content}
     </div>
   ) : (
-    <div className="group" onMouseUp={() => handleSelectionMouseUp()}>
+    <div
+      className="group"
+      onMouseUp={() => handleSelectionEnd()}
+      // Touch has no mouseup; defer a tick so the mobile selection finalizes.
+      onTouchEnd={() => window.setTimeout(handleSelectionEnd, 0)}
+    >
       <div
         ref={contentRef}
         className="prose prose-neutral max-w-none text-foreground"
