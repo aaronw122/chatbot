@@ -22,12 +22,16 @@ export type ModelsResponse = Record<Provider, string[]>
 //   - freeTierEnabled: false when the owner left FREE_TIER_KEY blank (hide all
 //     free-tier UI).
 //   - hasOwnKey: there IS an active BYOK key (same predicate as the billing gate).
+//   - isAnonymous: the session user is a throwaway anonymous account (anonymous-
+//     first free tier). Read FRESH at gate-fire time so the exhaustion gate can
+//     branch between the signup wall (anon) and the BYOK Settings dialog (real).
 export type UsageResponse = {
   freeUsed: number
   freeLimit: number
   freeRemaining: number
   hasOwnKey: boolean
   freeTierEnabled: boolean
+  isAnonymous: boolean
 }
 
 export const PROVIDERS: Provider[] = ['openai', 'anthropic']
