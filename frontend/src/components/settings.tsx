@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSettings } from "@/context/settingsContext";
+import { authClient } from "@/lib/auth-client";
 import services from "../services/index";
 import {
   PROVIDERS,
@@ -18,6 +19,7 @@ import {
   type Provider,
   type UserKeyMeta,
   type ModelsResponse,
+  type UsageResponse,
 } from "../types/byok";
 
 // Per-provider editable form state (the API key is write-only; we never receive
@@ -32,9 +34,16 @@ const emptyDrafts = (): DraftState =>
 
 const Settings = () => {
   const settings = useSettings();
+  const { data: session } = authClient.useSession();
+
+  // Anonymous-first: a guest can't BYOK (the gate is signup-first), so we hide the
+  // key form and surface a "sign up to add your own key" CTA instead. The free-
+  // balance indicator below still renders for them.
+  const isAnonymous = session?.user?.isAnonymous ?? false;
 
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [keys, setKeys] = useState<UserKeyMeta[]>([]);
+  const [usage, setUsage] = useState<UsageResponse | null>(null);
   const [drafts, setDrafts] = useState<DraftState>(emptyDrafts);
   const [busy, setBusy] = useState<Provider | "active" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,12 +59,14 @@ const Settings = () => {
   const refresh = async () => {
     setError(null);
     try {
-      const [fetchedModels, fetchedKeys] = await Promise.all([
+      const [fetchedModels, fetchedKeys, fetchedUsage] = await Promise.all([
         services.getModels(),
         services.getKeys(),
+        services.getUsage().catch(() => null),
       ]);
       setModels(fetchedModels);
       setKeys(fetchedKeys);
+      setUsage(fetchedUsage);
       // Seed each provider's model dropdown: existing configured model, else the
       // first allow-listed model for that provider.
       setDrafts((prev) => {
@@ -180,6 +191,27 @@ const Settings = () => {
           </div>
         )}
 
+        {/* Used-count reinforcement — ONLY for the exhaustion (402) case. A 503
+            opens this dialog at freeUsed = 0, where this line would be misleading,
+            so gate it on a fully-consumed balance. */}
+        {usage?.freeTierEnabled &&
+          !usage.hasOwnKey &&
+          usage.freeRemaining <= 0 && (
+            <p className="text-xs text-muted-foreground">
+              You've used {usage.freeUsed} of {usage.freeLimit} free messages.
+            </p>
+          )}
+
+        {/* Free-balance indicator for guests with messages still left — they
+            can't BYOK, so this is the only balance signal Settings can give them. */}
+        {usage?.freeTierEnabled &&
+          !usage.hasOwnKey &&
+          usage.freeRemaining > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {usage.freeRemaining} of {usage.freeLimit} free messages left.
+            </p>
+          )}
+
         {error && (
           <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
             <AlertCircle className="mt-0.5 size-4 shrink-0" />
@@ -187,8 +219,25 @@ const Settings = () => {
           </div>
         )}
 
-        <div className="flex flex-col gap-4">
-          {PROVIDERS.map((provider) => {
+        {isAnonymous ? (
+          <div className="flex flex-col items-start gap-3 rounded-xl border border-border bg-background p-4">
+            <p className="text-sm text-muted-foreground">
+              Sign up to add your own OpenAI or Anthropic key and chat without
+              limits.
+            </p>
+            <Button
+              size="sm"
+              onClick={() => {
+                settings.setOpen(false);
+                settings.openSignupWall();
+              }}
+            >
+              Sign up to add your own key
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {PROVIDERS.map((provider) => {
             const meta = keyFor(provider);
             const draft = drafts[provider];
             const providerModels = models?.[provider] ?? [];
@@ -282,9 +331,10 @@ const Settings = () => {
                   </Button>
                 </div>
               </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

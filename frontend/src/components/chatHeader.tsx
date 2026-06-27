@@ -11,13 +11,14 @@ import {
 import { useSettings } from "@/context/settingsContext";
 import { MobileMenuButton } from "@/components/mobileMenuButton";
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
-import services from "../services/index";
+import services, { onUsageChanged } from "../services/index";
 import {
   PROVIDERS,
   PROVIDER_LABELS,
   type Provider,
   type UserKeyMeta,
   type ModelsResponse,
+  type UsageResponse,
 } from "../types/byok";
 
 // B4 — Header + model switcher.
@@ -57,6 +58,7 @@ const ChatHeader = () => {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
+  const [usage, setUsage] = useState<UsageResponse | null>(null);
 
   // Reconcile local state from the backend's source of truth.
   const refreshHeaderStateFromBackend = async () => {
@@ -73,15 +75,35 @@ const ChatHeader = () => {
     }
   };
 
+  // Free-balance indicator (§9). Refetched on the NDJSON `done` frame (via
+  // onUsageChanged) rather than on send dispatch — reserve-before-call already
+  // counts the in-flight message, so an earlier refresh would double-subtract.
+  const refreshUsage = async () => {
+    try {
+      setUsage(await services.getUsage());
+    } catch (usageError) {
+      console.error("failed to load usage", usageError);
+    }
+  };
+
   useEffect(() => {
     void refreshHeaderStateFromBackend();
+    void refreshUsage();
     // Re-sync when the Settings dialog closes — the user may have added/removed a
     // key or changed the active provider/model there.
   }, []);
 
+  useEffect(() => {
+    onUsageChanged(() => void refreshUsage());
+    return () => onUsageChanged(null);
+  }, []);
+
   const settingsOpen = settings?.open ?? false;
   useEffect(() => {
-    if (!settingsOpen) void refreshHeaderStateFromBackend();
+    if (!settingsOpen) {
+      void refreshHeaderStateFromBackend();
+      void refreshUsage();
+    }
   }, [settingsOpen]);
 
   // Providers the user actually has a key for — only these can be switched to
@@ -92,6 +114,17 @@ const ChatHeader = () => {
   const hasAnyKey = configuredProviders.length > 0;
 
   const openSettings = () => settings?.openSettings();
+
+  // "N free messages left" — only while on the owner-funded free tier (enabled
+  // and no usable own key). Hidden once the user adds their own key.
+  const showFreeIndicator =
+    !!usage && usage.freeTierEnabled && !usage.hasOwnKey;
+  const freeIndicator = showFreeIndicator ? (
+    <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
+      {usage.freeRemaining} free{" "}
+      {usage.freeRemaining === 1 ? "message" : "messages"} left
+    </span>
+  ) : null;
 
   const isSelected = (provider: Provider, model: string) =>
     selection?.provider === provider && selection?.model === model;
@@ -132,6 +165,7 @@ const ChatHeader = () => {
           <KeyRound className="size-4" />
           Add a key
         </button>
+        {freeIndicator}
       </header>
     );
   }
@@ -199,6 +233,7 @@ const ChatHeader = () => {
           {error}
         </span>
       )}
+      {freeIndicator}
     </header>
   );
 };

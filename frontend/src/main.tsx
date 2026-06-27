@@ -19,6 +19,7 @@ import {
 import { MobileMenuButton } from "./components/mobileMenuButton.tsx";
 import { authClient } from "./lib/auth-client.ts";
 import SignUp from "./pages/signUp.tsx";
+import SignupWall from "./components/signupWall.tsx";
 
 // Two-pane shell: fixed sidebar + flexible main column. The shell owns the
 // two-pane geometry, the centered scroll region, and the column max-width +
@@ -82,6 +83,9 @@ function AppShell() {
           </Routes>
         </div>
       </main>
+      {/* Global signup wall (§8). Portals to <body>, so it overlays any route
+          (home or chat) when the anonymous free-tier gate fires. */}
+      <SignupWall />
     </div>
   );
 }

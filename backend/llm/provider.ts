@@ -40,6 +40,10 @@ type GenerateReplyArgs = {
   model: string
   apiKey: string
   messages: Array<CleanMessage | Message>
+  // Optional output cap. Set on the owner-funded free path to bound per-query
+  // spend; omitted for BYOK (Anthropic keeps its existing 1000 default, OpenAI
+  // stays uncapped — today's behavior). See backend/index.ts FREE_TIER_MAX_TOKENS.
+  maxTokens?: number
 }
 
 // Normalize our stored messages into { role, content } pairs with string
@@ -83,13 +87,13 @@ function prepareReply({
 // Generate an assistant reply using the active provider + key. Normalizes our
 // message shape into each SDK's format and returns the assistant text.
 export async function generateReply(args: GenerateReplyArgs): Promise<string> {
-  const { provider, model, apiKey } = args
+  const { provider, model, apiKey, maxTokens } = args
   const normalized = prepareReply(args)
 
   if (provider === 'anthropic') {
     const client = new Anthropic({ apiKey })
     const message = await client.messages.create({
-      max_tokens: 1000,
+      max_tokens: maxTokens ?? 1000,
       model,
       messages: normalized.map(({ role, content }) => ({ role, content })),
     })
@@ -104,6 +108,8 @@ export async function generateReply(args: GenerateReplyArgs): Promise<string> {
     const completion = await client.chat.completions.create({
       model,
       messages: normalized.map(({ role, content }) => ({ role, content })),
+      // Cap only when set (owner-funded free path); BYOK omits it → uncapped.
+      ...(maxTokens ? { max_completion_tokens: maxTokens } : {}),
     })
     return completion.choices[0]?.message?.content ?? ''
   }
@@ -120,7 +126,7 @@ export async function* streamReply(
   args: GenerateReplyArgs,
   signal?: AbortSignal
 ): AsyncGenerator<string> {
-  const { provider, model, apiKey } = args
+  const { provider, model, apiKey, maxTokens } = args
   const normalized = prepareReply(args)
   const sdkMessages = normalized.map(({ role, content }) => ({ role, content }))
 
@@ -128,7 +134,7 @@ export async function* streamReply(
     const client = new Anthropic({ apiKey })
     const stream = client.messages.stream(
       {
-        max_tokens: 1000,
+        max_tokens: maxTokens ?? 1000,
         model,
         messages: sdkMessages,
       },
@@ -145,12 +151,14 @@ export async function* streamReply(
 
   if (provider === 'openai') {
     const client = new OpenAI({ apiKey })
-    // No max_tokens (GPT-5.x param-minimal compat, matching generateReply).
+    // Cap only when set (owner-funded free path); BYOK omits it → uncapped.
+    // GPT-5.x rejects the legacy max_tokens, so use max_completion_tokens.
     const stream = await client.chat.completions.create(
       {
         model,
         messages: sdkMessages,
         stream: true,
+        ...(maxTokens ? { max_completion_tokens: maxTokens } : {}),
       },
       { signal }
     )
