@@ -128,18 +128,22 @@ const allowedOrigins = Array.from(
   )
 )
 
-app.use(express.json())
-app.use(express.static(path.join(import.meta.dirname, 'dist')))
-
 app.use(cors({
   origin: allowedOrigins,
   credentials: true
 }))
 
-// `storage` is the shared singleton from ./db/storage (imported above). It lives
-// there, not here, so utils/auth can import it without a circular dependency.
-
+// better-auth's handler MUST be mounted BEFORE express.json(). toNodeHandler reads the
+// raw request stream to reconstruct the web Request body; if express.json() runs first it
+// consumes the stream, silently breaking EVERY POST auth route (GET works, POST 404s —
+// e.g. sign-in/anonymous, sign-out, sign-in/email). cors stays above so auth responses
+// get CORS headers. Do NOT move express.json() back above this line.
+// `storage` is the shared singleton from ./db/storage (imported above), kept there so
+// utils/auth can import it without a circular dependency.
 app.all("/api/auth/{*any}", toNodeHandler(auth))
+
+app.use(express.json())
+app.use(express.static(path.join(import.meta.dirname, 'dist')))
 
 //pass through whole new array each Req
 
