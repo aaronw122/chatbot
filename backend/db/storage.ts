@@ -71,6 +71,22 @@ export interface Storage {
 
   // Release (decrement) a reservation made by incrementFreeUsage, clamped at 0.
   releaseFreeUsage({ userId }: { userId: string }): Promise<void>
+
+  // ----- Account linking (anonymous → real) -----
+  // Carry an anonymous user's app data onto the real user when better-auth links
+  // them (anonymous plugin onLinkAccount hook).
+  //
+  // CRITICAL ordering (review MF1): the free-usage count carries FIRST and
+  // FAIL-CLOSED. getFreeUsage returns 0 for a missing row, so a missing/zeroed
+  // target row would grant a fresh FREE_TIER_LIMIT free replies — letting a user
+  // farm a new allowance by signing up. The target's `used` is set to
+  // greatest(target_used, anon_used); if that write fails we seal the target at
+  // >= FREE_TIER_LIMIT and only then give up. The target is NEVER left at 0-used.
+  //
+  // The remaining moves (conversations, highlights, api keys) are cosmetic and
+  // best-effort: each catches+logs and does not throw. `messages` keys on convo_id
+  // (not user_id) and is intentionally untouched.
+  reassignUserData({ fromUserId, toUserId }: { fromUserId: string; toUserId: string }): Promise<void>
 }
 
 // Internal row shape held by InMemoryStorage for API keys.
@@ -343,6 +359,62 @@ export class InMemoryStorage implements Storage {
   async releaseFreeUsage({ userId }: { userId: string }): Promise<void> {
     const current = this.freeUsage.get(userId) ?? 0
     this.freeUsage.set(userId, Math.max(current - 1, 0))
+  }
+
+  // ----- Account linking (anonymous → real) -----
+
+  async reassignUserData({ fromUserId, toUserId }: { fromUserId: string; toUserId: string }): Promise<void> {
+    // 1) Free-usage count FIRST, fail-closed (review MF1). Carry the MAX so the
+    //    target never gains a fresh allowance and neither side loses consumed slots.
+    try {
+      const fromUsed = this.freeUsage.get(fromUserId) ?? 0
+      const toUsed = this.freeUsage.get(toUserId) ?? 0
+      this.freeUsage.set(toUserId, Math.max(fromUsed, toUsed))
+      this.freeUsage.delete(fromUserId)
+    } catch (error) {
+      // Seal the target at the limit so they cannot claim a fresh free allowance.
+      const limit = Number(process.env.FREE_TIER_LIMIT ?? '5')
+      const toUsed = this.freeUsage.get(toUserId) ?? 0
+      this.freeUsage.set(toUserId, Math.max(toUsed, limit))
+      console.error('reassignUserData: free-usage carry failed; sealing target', error)
+    }
+
+    // 2) Cosmetic moves — each best-effort (catch + log, never throw).
+    try {
+      for (const convo of this.conversations.values()) {
+        if (convo.userId === fromUserId) convo.userId = toUserId
+      }
+    } catch (error) {
+      console.error('reassignUserData: conversation re-point failed', error)
+    }
+
+    try {
+      for (const highlight of this.highlights.values()) {
+        if (highlight.userId === fromUserId) highlight.userId = toUserId
+      }
+    } catch (error) {
+      console.error('reassignUserData: highlight re-point failed', error)
+    }
+
+    try {
+      // Re-point API keys, honoring the unique (userId, provider) constraint: if the
+      // target already has a key for the provider, keep theirs and drop the anon one.
+      for (const [key, row] of [...this.apiKeys.entries()]) {
+        if (row.userId !== fromUserId) continue
+        this.apiKeys.delete(key)
+        const targetKey = this.keyOf(toUserId, row.provider)
+        if (!this.apiKeys.has(targetKey)) {
+          row.userId = toUserId
+          // Never carry an active flag across the link (parity with SupabaseStorage):
+          // the returning user's own active key must remain the sole active one.
+          row.isActive = false
+          this.apiKeys.set(targetKey, row)
+        }
+        // else: conflict — target already configured this provider; drop the anon row.
+      }
+    } catch (error) {
+      console.error('reassignUserData: api key re-point failed', error)
+    }
   }
 
   // ----- BYOK: API key CRUD -----
@@ -824,4 +896,121 @@ export class SupabaseStorage implements Storage {
     const { error } = await supabaseAdmin.rpc('decrement_free_usage', { p_user_id: userId })
     if (error) throw error
   }
+
+  // ----- Account linking (anonymous → real) -----
+
+  async reassignUserData({ fromUserId, toUserId }: { fromUserId: string; toUserId: string }): Promise<void> {
+    // 1) Free-usage carry FIRST — security-critical, fail-closed (review MF1). A
+    //    missing target row reads as 0 (getFreeUsage), which would grant a fresh
+    //    FREE_TIER_LIMIT. No RPC is needed: read both counts, write greatest() as a
+    //    plain JS literal via upsert (not a self-referencing SQL expression), then
+    //    delete the anon row.
+    try {
+      const fromUsed = await this.getFreeUsage({ userId: fromUserId })
+      const toUsed = await this.getFreeUsage({ userId: toUserId })
+      const carried = Math.max(fromUsed, toUsed)
+
+      const { error: upsertError } = await supabaseAdmin
+        .from('free_query_usage')
+        .upsert(
+          { user_id: toUserId, used: carried, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id' }
+        )
+      if (upsertError) throw upsertError
+
+      const { error: deleteError } = await supabaseAdmin
+        .from('free_query_usage')
+        .delete()
+        .eq('user_id', fromUserId)
+      if (deleteError) throw deleteError
+    } catch (error) {
+      // Fail-closed: seal the target at >= FREE_TIER_LIMIT so the linked account
+      // cannot claim a fresh free allowance. Only if even this write fails do we
+      // propagate (the better-auth onLinkAccount hook surfaces the error).
+      console.error('reassignUserData: free-usage carry failed; sealing target', error)
+      const limit = Number(process.env.FREE_TIER_LIMIT ?? '5')
+      const { error: sealError } = await supabaseAdmin
+        .from('free_query_usage')
+        .upsert(
+          { user_id: toUserId, used: limit, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id' }
+        )
+      if (sealError) throw sealError
+    }
+
+    // 2) Cosmetic moves — each best-effort (catch + log, never throw). `messages`
+    //    keys on convo_id (not user_id) and is intentionally left untouched.
+    try {
+      const { error } = await supabaseAdmin
+        .from('conversations')
+        .update({ user_id: toUserId })
+        .eq('user_id', fromUserId)
+      if (error) throw error
+    } catch (error) {
+      console.error('reassignUserData: conversation re-point failed', error)
+    }
+
+    try {
+      // `.eq('user_id', fromUserId)` already excludes null-owner highlights.
+      const { error } = await supabaseAdmin
+        .from('highlights')
+        .update({ user_id: toUserId })
+        .eq('user_id', fromUserId)
+      if (error) throw error
+    } catch (error) {
+      console.error('reassignUserData: highlight re-point failed', error)
+    }
+
+    try {
+      // user_api_keys has unique (user_id, provider): a blind re-point would throw a
+      // unique violation if the returning user already configured the same provider.
+      // Move only providers the target lacks; drop the anon row for the rest.
+      const { data: anonKeys, error: listError } = await supabaseAdmin
+        .from('user_api_keys')
+        .select('provider')
+        .eq('user_id', fromUserId)
+      if (listError) throw listError
+
+      const { data: targetKeys, error: targetError } = await supabaseAdmin
+        .from('user_api_keys')
+        .select('provider')
+        .eq('user_id', toUserId)
+      if (targetError) throw targetError
+
+      const targetProviders = new Set((targetKeys ?? []).map((row) => row.provider))
+      for (const row of anonKeys ?? []) {
+        if (targetProviders.has(row.provider)) {
+          // Conflict: keep the returning user's key, drop the anon one.
+          const { error } = await supabaseAdmin
+            .from('user_api_keys')
+            .delete()
+            .eq('user_id', fromUserId)
+            .eq('provider', row.provider)
+          if (error) throw error
+        } else {
+          // Force is_active:false on the moved row. Never carry an active flag
+          // across the link: the returning user's own active key must remain the
+          // SOLE active row, or getActiveKey()'s .maybeSingle() throws on two
+          // is_active=true rows — persistently breaking /api/usage and the send
+          // path (the catch+log here cannot undo the committed write). A brand-new
+          // signup has no keys, so this is a harmless no-op for them.
+          const { error } = await supabaseAdmin
+            .from('user_api_keys')
+            .update({ user_id: toUserId, is_active: false })
+            .eq('user_id', fromUserId)
+            .eq('provider', row.provider)
+          if (error) throw error
+        }
+      }
+    } catch (error) {
+      console.error('reassignUserData: api key re-point failed', error)
+    }
+  }
 }
+
+// Single app-wide storage instance, selected by USE_SUPABASE at module-eval time.
+// Defined here (rather than in index.ts) so modules like utils/auth can import it
+// without a circular dependency through index.ts. index.ts re-exports it.
+export const storage: Storage = process.env.USE_SUPABASE === 'true'
+  ? new SupabaseStorage()
+  : new InMemoryStorage()
