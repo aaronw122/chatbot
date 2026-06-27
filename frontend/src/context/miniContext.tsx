@@ -22,6 +22,9 @@ export const MiniProvider = ({ children }: { children: React.ReactNode }) => {
     end: number;
   } | null>(null);
   const [quote, setQuote] = useState<string | null>(null);
+  // Anchor offset + capped height for the floating desktop branch panel (see type).
+  const [anchorTop, setAnchorTop] = useState<number | null>(null);
+  const [anchorMaxHeight, setAnchorMaxHeight] = useState<number | null>(null);
   const [highlightRevision, setHighlightRevision] = useState(0);
   const notifyHighlightCreated = () => {
     setHighlightRevision((revision) => revision + 1);
@@ -46,6 +49,10 @@ export const MiniProvider = ({ children }: { children: React.ReactNode }) => {
         setHighlightRange,
         quote,
         setQuote,
+        anchorTop,
+        setAnchorTop,
+        anchorMaxHeight,
+        setAnchorMaxHeight,
         highlightRevision,
         notifyHighlightCreated,
       }}

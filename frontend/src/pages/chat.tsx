@@ -12,13 +12,15 @@ import type { Highlight } from "../../../types/types";
 
 type ChatLocationState = { streamFirst?: string } | null;
 
-// Right gutter reserved on desktop for the floating Branch panel (miniWindow:
-// w-96 + right-6 ≈ 26rem). Ramped by breakpoint: a gentler reserve at lg keeps
-// the reading column usable on small laptops (a flat 26rem there shrinks it to
-// ~320px), widening to the full panel clearance at xl+ where there's room.
-// Applied to every full-pane section so the column shifts left-of-center
-// (Notion-style) and the sections stay horizontally aligned.
-const GUTTER = "lg:pr-[18rem] xl:pr-[26rem]";
+// Desktop horizontal framing for every full-pane chat section, applied so the
+// header, message scroll, and composer stay aligned.
+//   - Right gutter reserves space for the Branch panel (miniWindow: w-96 +
+//     right-6 ≈ 26rem). Ramped: gentler at lg so small laptops keep a usable
+//     column (a flat 26rem shrinks it to ~320px), full clearance at xl+.
+//   - Left gutter adds Notion-style breathing room between the sidebar and the
+//     reading column (the centered column otherwise hugs the sidebar once the
+//     right gutter pulls it left, especially with the sidebar expanded).
+const GUTTER = "lg:pl-10 lg:pr-[18rem] xl:pl-20 xl:pr-[26rem]";
 
 const Session = () => {
   const convo = useConvo();
@@ -67,6 +69,8 @@ const Session = () => {
       mini.setSourceMessageId(null);
       mini.setHighlightRange(null);
       mini.setQuote(null);
+      mini.setAnchorTop(null);
+      mini.setAnchorMaxHeight(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -153,7 +157,14 @@ const Session = () => {
       </div>
       {chatHistory ? (
         <>
-          <div className={`flex-1 overflow-y-auto ${GUTTER}`}>
+          {/* The scroll container is the positioning context for the floating
+              desktop Branch panel: rendering MiniWindow inside it (absolute,
+              data-chat-scroll) makes the panel scroll away with the conversation
+              like a comment, rather than following the viewport. */}
+          <div
+            data-chat-scroll
+            className={`relative flex-1 overflow-y-auto ${GUTTER}`}
+          >
             <div className="mx-auto w-full max-w-3xl px-4 py-6">
               <MessageHistory
                 history={chatHistory}
@@ -161,6 +172,7 @@ const Session = () => {
               />
               <div ref={bottomRef} />
             </div>
+            <MiniWindow />
           </div>
           <div className={GUTTER}>
             <div className="mx-auto w-full max-w-3xl px-4 pb-4 pt-2">
@@ -173,7 +185,6 @@ const Session = () => {
               />
             </div>
           </div>
-          <MiniWindow />
         </>
       ) : (
         <div className={GUTTER}>

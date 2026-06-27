@@ -14,10 +14,16 @@ const MiniWindow = () => {
   const convo = useConvo();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
 
+  // Keep the branch history pinned to the bottom by scrolling ONLY the panel's
+  // own history scroller. Do NOT use scrollIntoView here: the desktop panel is
+  // an absolute child of the main chat scroll container, and scrollIntoView
+  // bubbles to every scrollable ancestor — it would scroll the whole
+  // conversation and push the panel's header off the top of the viewport.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    const el = historyRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [mini?.miniChatHistory]);
 
   if (!mini || !convo) return null;
@@ -37,6 +43,10 @@ const MiniWindow = () => {
     setHighlightRange,
     quote,
     setQuote,
+    anchorTop,
+    setAnchorTop,
+    anchorMaxHeight,
+    setAnchorMaxHeight,
   } = mini;
 
   const resetState = () => {
@@ -47,6 +57,8 @@ const MiniWindow = () => {
     setSourceMessageId(null);
     setHighlightRange(null);
     setQuote(null);
+    setAnchorTop(null);
+    setAnchorMaxHeight(null);
   };
 
   const handleClose = () => {
@@ -100,9 +112,8 @@ const MiniWindow = () => {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div ref={historyRef} className="flex-1 overflow-y-auto px-4 py-3">
         {miniChatHistory && <MiniMessageHistory history={miniChatHistory} />}
-        <div ref={bottomRef} />
       </div>
 
       <div className="px-3 pb-3 pt-2">
@@ -168,9 +179,15 @@ const MiniWindow = () => {
 
   if (!miniOpen) return null;
 
-  // Desktop: floating window pinned bottom-right with maximize + close controls.
+  // Desktop: a floating panel anchored beside the highlighted text. It lives
+  // inside the chat scroll container (see chat.tsx), so it scrolls away with the
+  // conversation like a Notion comment instead of following the viewport. top is
+  // the captured offset of the highlight within that scroll content (fallback to
+  // a small inset if we never captured one).
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex h-[500px] w-96 flex-col rounded-2xl border border-border bg-background shadow-md">
+    <div
+      style={{ top: anchorTop ?? 24, maxHeight: anchorMaxHeight ?? undefined }}
+      className="absolute right-6 z-30 flex h-[500px] max-h-[calc(100svh-11rem)] w-96 flex-col rounded-2xl border border-border bg-background shadow-md">
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
         <span className="text-sm font-semibold text-primary">Branch</span>
         <div className="flex items-center gap-1">

@@ -96,7 +96,7 @@ const MiniInput = () => {
     !miniMessage || miniMessage.trim().length === 0 || streaming;
 
   return (
-    <div className="flex items-end gap-2 rounded-2xl border border-input bg-background p-2 shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring">
+    <div className="flex items-end gap-2 rounded-2xl border border-input bg-background p-2 shadow-sm transition-shadow focus-within:shadow-md">
       <textarea
         placeholder="ask a follow-up"
         rows={1}
